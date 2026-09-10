@@ -467,27 +467,37 @@ function ProgramCard({ dayPlan, program, updateEx, toggleDone, prevSession, onCo
         </div>
       )}
 
-      <div className="space-y-2 mt-2">
-        <div className="flex items-center gap-2 text-xs justify-end pr-1" style={{ color: C.inkSoft }}>
-          <span className="w-9 text-center">ser.</span><span className="w-10 text-center">pow.</span><span className="w-10 text-center">kg</span>
-        </div>
+      <div className="space-y-3 mt-2">
         {dayPlan.exercises.map((ex, idx) => {
           const st = exStates[idx] || { done: false, sets: "", reps: "", kg: "" };
           return (
-            <div key={idx} className="flex items-center gap-2 text-sm">
-              <button onClick={() => updateEx(idx, "done", !st.done)} style={{ color: st.done ? C.teal : C.inkSoft }}>
-                <Check size={14} />
-              </button>
-              <div className="flex-1" style={{ color: C.ink, textDecoration: st.done ? "line-through" : "none" }}>{ex.name}</div>
-              <div className="text-xs font-mono" style={{ color: C.inkSoft }}>{ex.sets}×{ex.reps}</div>
-              <input placeholder="serie" value={st.sets} onChange={(e) => updateEx(idx, "sets", e.target.value)}
-                className="w-9 text-xs text-center font-mono bg-transparent outline-none" style={{ color: C.ink, borderBottom: `1px solid ${C.line}` }} />
-              <input placeholder="powt" value={st.reps} onChange={(e) => updateEx(idx, "reps", e.target.value)}
-                className="w-10 text-xs text-center font-mono bg-transparent outline-none" style={{ color: C.ink, borderBottom: `1px solid ${C.line}` }} />
-              {!ex.bw ? (
-                <input placeholder="kg" value={st.kg} onChange={(e) => updateEx(idx, "kg", e.target.value)}
-                  className="w-10 text-xs text-center font-mono bg-transparent outline-none" style={{ color: C.ink, borderBottom: `1px solid ${C.amber}` }} />
-              ) : <span className="w-10" />}
+            <div key={idx} className="pb-2" style={{ borderBottom: `1px solid ${C.paperDim}` }}>
+              <div className="flex items-start gap-2 text-sm mb-1.5">
+                <button onClick={() => updateEx(idx, "done", !st.done)} className="mt-0.5 shrink-0" style={{ color: st.done ? C.teal : C.inkSoft }}>
+                  <Check size={16} />
+                </button>
+                <div className="flex-1 leading-snug" style={{ color: C.ink, textDecoration: st.done ? "line-through" : "none" }}>{ex.name}</div>
+              </div>
+              <div className="flex items-center gap-3 pl-6 text-xs">
+                <span className="font-mono shrink-0" style={{ color: C.inkSoft }}>cel {ex.sets}×{ex.reps}</span>
+                <label className="flex items-center gap-1" style={{ color: C.inkSoft }}>
+                  ser.
+                  <input value={st.sets} onChange={(e) => updateEx(idx, "sets", e.target.value)}
+                    className="w-10 text-center font-mono bg-transparent outline-none" style={{ color: C.ink, borderBottom: `1px solid ${C.line}` }} />
+                </label>
+                <label className="flex items-center gap-1" style={{ color: C.inkSoft }}>
+                  pow.
+                  <input value={st.reps} onChange={(e) => updateEx(idx, "reps", e.target.value)}
+                    className="w-10 text-center font-mono bg-transparent outline-none" style={{ color: C.ink, borderBottom: `1px solid ${C.line}` }} />
+                </label>
+                {!ex.bw && (
+                  <label className="flex items-center gap-1" style={{ color: C.inkSoft }}>
+                    kg
+                    <input value={st.kg} onChange={(e) => updateEx(idx, "kg", e.target.value)}
+                      className="w-12 text-center font-mono bg-transparent outline-none" style={{ color: C.ink, borderBottom: `1px solid ${C.amber}` }} />
+                  </label>
+                )}
+              </div>
             </div>
           );
         })}
@@ -551,7 +561,7 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
       setTextDesc("");
     } catch (err) {
       console.error(err);
-      setTextError("Nie udało się policzyć z opisu. Spróbuj ponownie albo dodaj ręcznie.");
+      setTextError("Błąd: " + (err?.message || String(err)).slice(0, 300));
     } finally { setTextBusy(false); }
   };
 
@@ -576,7 +586,7 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
       await persist({ ...data, meals: [...data.meals, meal] });
     } catch (err) {
       console.error(err);
-      setPhotoError("Nie udało się rozpoznać zdjęcia. Spróbuj ponownie lub dodaj posiłek ręcznie.");
+      setPhotoError("Błąd: " + (err?.message || String(err)).slice(0, 300));
     } finally { setBusy(false); }
   };
 
@@ -774,23 +784,24 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
         )}
         {data.meals.map((m) => (
           <div key={m.id} className="p-3" style={{ background: C.paper, borderRadius: 2 }}>
-            <div className="flex items-start gap-3">
-              <input value={m.time} onChange={(e) => updateMeal(m.id, "time", e.target.value)}
-                className="w-14 text-xs font-mono bg-transparent outline-none" style={{ color: C.inkSoft }} />
-              <div className="flex-1">
+            <div className="flex items-start gap-2">
+              <div className="flex-1 min-w-0">
                 <input value={m.name} onChange={(e) => updateMeal(m.id, "name", e.target.value)}
                   className="w-full bg-transparent outline-none text-sm font-medium" style={{ color: C.ink }} />
-                {m.details && <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>{m.details}</div>}
+                {m.details && <div className="text-xs mt-0.5 leading-snug" style={{ color: C.inkSoft }}>{m.details}</div>}
               </div>
-              <input type="number" value={m.kcal} onChange={(e) => updateMeal(m.id, "kcal", e.target.value)}
-                className="w-16 text-right bg-transparent outline-none text-sm font-mono" style={{ color: C.ink }} />
-              <span className="text-xs" style={{ color: C.inkSoft }}>kcal</span>
-              <button onClick={() => removeMeal(m.id)} style={{ color: C.rust }}><X size={14} /></button>
+              <button onClick={() => removeMeal(m.id)} className="shrink-0 p-1" style={{ color: C.rust }}><X size={16} /></button>
             </div>
-            <div className="flex items-center gap-3 mt-2 pl-16 text-xs font-mono" style={{ color: C.inkSoft }}>
-              <span>B: <input type="number" value={m.protein} onChange={(e) => updateMeal(m.id, "protein", e.target.value)} className="w-8 bg-transparent outline-none" style={{ color: C.ink }} />g</span>
-              <span>T: <input type="number" value={m.fat} onChange={(e) => updateMeal(m.id, "fat", e.target.value)} className="w-8 bg-transparent outline-none" style={{ color: C.ink }} />g</span>
-              <span>W: <input type="number" value={m.carbs} onChange={(e) => updateMeal(m.id, "carbs", e.target.value)} className="w-8 bg-transparent outline-none" style={{ color: C.ink }} />g</span>
+            <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-2 text-xs font-mono" style={{ color: C.inkSoft }}>
+              <input value={m.time} onChange={(e) => updateMeal(m.id, "time", e.target.value)}
+                className="w-12 bg-transparent outline-none" style={{ color: C.inkSoft }} />
+              <span>
+                <input type="number" value={m.kcal} onChange={(e) => updateMeal(m.id, "kcal", e.target.value)}
+                  className="w-12 text-right bg-transparent outline-none font-semibold" style={{ color: C.ink }} /> kcal
+              </span>
+              <span>B <input type="number" value={m.protein} onChange={(e) => updateMeal(m.id, "protein", e.target.value)} className="w-9 bg-transparent outline-none" style={{ color: C.ink }} />g</span>
+              <span>T <input type="number" value={m.fat} onChange={(e) => updateMeal(m.id, "fat", e.target.value)} className="w-9 bg-transparent outline-none" style={{ color: C.ink }} />g</span>
+              <span>W <input type="number" value={m.carbs} onChange={(e) => updateMeal(m.id, "carbs", e.target.value)} className="w-9 bg-transparent outline-none" style={{ color: C.ink }} />g</span>
             </div>
           </div>
         ))}
@@ -1066,15 +1077,20 @@ function WeekView({ date, settings }) {
 
       <div className="space-y-2">
         {rows.map((r) => (
-          <div key={r.date} className="p-3 flex items-center justify-between text-sm gap-2" style={{ background: C.paper, borderRadius: 2 }}>
-            <div className="capitalize font-medium" style={{ color: C.ink, width: 80 }}>{shortLabel(r.date)}</div>
-            <div className="font-mono text-xs" style={{ color: C.inkSoft }}>{r.consumed}/{r.burned || "—"}</div>
-            <div className="font-mono text-xs" style={{ color: r.net >= 0 ? C.teal : C.rust }}>
-              {r.consumed || r.burned ? `${r.net >= 0 ? "-" : "+"}${Math.abs(r.net)}` : "—"}
+          <div key={r.date} className="p-3" style={{ background: C.paper, borderRadius: 2 }}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="capitalize font-medium text-sm" style={{ color: C.ink }}>{shortLabel(r.date)}</span>
+              <span className="text-xs" style={{ color: r.isTrainDay ? (r.progDone ? C.teal : C.rust) : C.inkSoft }}>
+                {r.isTrainDay ? (r.progDone ? "✓ trening" : "— trening") : "odpoczynek"}
+              </span>
             </div>
-            <div className="font-mono text-xs" style={{ color: C.inkSoft }}>{r.hrs != null ? `${r.hrs}h` : "—"}</div>
-            <div className="text-xs" style={{ color: r.isTrainDay ? (r.progDone ? C.teal : C.rust) : C.inkSoft }}>
-              {r.isTrainDay ? (r.progDone ? "✓ trening" : "— trening") : "odpoczynek"}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-mono" style={{ color: C.inkSoft }}>
+              <span>{r.consumed}/{r.burned || "—"} kcal</span>
+              <span style={{ color: r.net >= 0 ? C.teal : C.rust }}>
+                {r.consumed || r.burned ? `${r.net >= 0 ? "-" : "+"}${Math.abs(r.net)}` : "—"}
+              </span>
+              <span>{r.hrs != null ? `${r.hrs}h snu` : "— snu"}</span>
+              {r.runKm > 0 && <span>{r.runKm} km</span>}
             </div>
           </div>
         ))}

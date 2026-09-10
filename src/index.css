@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: #14181A;
+}
+
+/* wygodniejsze dotykanie na telefonie */
+input, button, textarea, select {
+  font-size: 16px; /* blokuje auto-zoom w iOS Safari */
+  font-family: inherit;
+}
+input[type="time"], input[type="date"], input[type="number"] {
+  min-height: 34px;
+}
+button { touch-action: manipulation; }
