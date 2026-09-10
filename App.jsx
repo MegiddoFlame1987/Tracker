@@ -561,7 +561,7 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
       setTextDesc("");
     } catch (err) {
       console.error(err);
-      setTextError("Nie udało się policzyć z opisu. Spróbuj ponownie albo dodaj ręcznie.");
+      setTextError("Błąd: " + (err?.message || String(err)).slice(0, 300));
     } finally { setTextBusy(false); }
   };
 
@@ -586,7 +586,7 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
       await persist({ ...data, meals: [...data.meals, meal] });
     } catch (err) {
       console.error(err);
-      setPhotoError("Nie udało się rozpoznać zdjęcia. Spróbuj ponownie lub dodaj posiłek ręcznie.");
+      setPhotoError("Błąd: " + (err?.message || String(err)).slice(0, 300));
     } finally { setBusy(false); }
   };
 
