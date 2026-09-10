@@ -47,7 +47,12 @@ export default async function handler(req, res) {
 
     if (!resp.ok) {
       const errText = await resp.text();
-      return res.status(resp.status).json({ error: `Anthropic API error: ${errText}` });
+      let hint = "";
+      if (resp.status === 401) hint = "Klucz API nieprawidłowy lub nie ustawiony w Vercel.";
+      else if (resp.status === 400 && errText.includes("credit")) hint = "Brak środków na koncie Anthropic — doładuj w console.anthropic.com (Billing).";
+      else if (resp.status === 429) hint = "Limit zapytań przekroczony, spróbuj za chwilę.";
+      else if (resp.status === 404) hint = "Model niedostępny dla tego klucza.";
+      return res.status(resp.status).json({ error: `${resp.status}: ${hint} ${errText}`.slice(0, 400) });
     }
 
     const data = await resp.json();
