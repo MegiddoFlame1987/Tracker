@@ -40,11 +40,11 @@ function getMonthDates(monthStr) {
 }
 // pozycje kluczowych ćwiczeń (dayKey, idx) — stabilne w całym cyklu, do śledzenia progresu obciążeń
 const KEY_LIFTS = [
-  { dayKey: "wed", idx: 0, label: "Wyciskanie sztangi" },
-  { dayKey: "wed", idx: 1, label: "OHP" },
-  { dayKey: "fri", idx: 0, label: "Podciąganie" },
-  { dayKey: "fri", idx: 2, label: "Wiosłowanie" },
-  { dayKey: "sat", idx: 0, label: "Step-down (ekscentryka)" },
+  { dayKey: "wed", idx: 0, label: "Podciąganie (garaż)" },
+  { dayKey: "thu", idx: 0, label: "Przysiad" },
+  { dayKey: "thu", idx: 1, label: "RDL" },
+  { dayKey: "fri", idx: 1, label: "Wiosłowanie" },
+  { dayKey: "sat", idx: 0, label: "Wyciskanie sztangi" },
 ];
 
 // najbliższe wyścigi 2027: 100km 15.05, Mont Blanc 07.07, Snowdonia 80km 04.09
@@ -71,88 +71,72 @@ const PHASES = {
   2: { name: "Faza 2 · Budowa", weeks: [13, 24], kcal: 3100, protein: 180, fat: 90, carbs: 400 },
 };
 const TOTAL_WEEKS = 24;
-const DAY_KEY_BY_DOW = { 3: "wed", 4: "thu", 5: "fri", 6: "sat", 0: "sun" };
+const DAY_KEY_BY_DOW = { 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
 
 function getPhaseForWeek(w) { return w <= 12 ? PHASES[1] : PHASES[2]; }
 
 function buildProgram(week) {
-  const p1 = week <= 12;
-  const wk = p1 ? week : week - 12;
   return [
     {
-      key: "wed", name: "Środa", focus: "Base run + Push", type: "gym",
-      warmup: "5 min rower/wiosłowanie + rotacje barków, 1 seria rozgrzewkowa wyciskania",
-      note: "Po trzech nockach — zamulenie normalne. Bieg Z1/Z2 spokojnie (40-60 min), potem push. Nic tu nie wymaga ostrości głowy, więc rób mimo zmęczenia. Po ostatniej nocce max 3-4h drzemki, potem normalna noc.",
+      key: "wed", name: "Środa", focus: "Garaż — kalistenika push/pull", type: "home",
+      warmup: "5 min skakanka/marsz + krążenia barków, band pull-aparts 2x15",
+      note: "Garaż: drążek, mata, gumy, plecak z butelkami wody. Objętość niska, jakość wysoka. Plecak: start 8-10 kg, buduj do 15-20 kg przez 6-8 tyg. Core obowiązkowy, nie do pominięcia.",
       exercises: [
-        { name: "Wyciskanie sztangi / hantli (garaż: pompki obciążone)", sets: 4, reps: p1 ? 8 : 5 },
-        { name: "Wyciskanie nad głowę / OHP", sets: 3, reps: 10 },
-        { name: "Incline dumbbell press / pompki incline", sets: 3, reps: 12 },
-        { name: "Dips / pompki diamentowe", sets: 3, reps: "max", bw: true },
-        { name: "Face pull / rear delt (guma) — balans do push", sets: 3, reps: 15 },
-        { name: "Plank", sets: 3, reps: "45s", bw: true },
-      ],
-    },
-    (week <= 4 ? {
-      key: "thu", name: "Czwartek", focus: "Baza Z1/Z2 + wspinanie/chwyt", type: "run",
-      warmup: "10 min marszobieg, spokojnie",
-      note: `Tydzień ${week}/4 czystej bazy — bieg Z1/Z2, płasko, zero podejść/sprintów. ME startuje po tym oknie.`,
-      exercises: [
-        { name: "Wspinanie 1h — LUB sesja chwytu (dead hang, farmer walk, wiosłowanie)", sets: 1, reps: "60 min", bw: true },
-        { name: "Dead bug", sets: 3, reps: 12, bw: true },
-        { name: "Pallof press", sets: 3, reps: "12/stronę", bw: true },
-      ],
-    } : week <= 12 ? {
-      key: "thu", name: "Czwartek", focus: "ME (przewyższenie) + wspinanie/chwyt", type: "run",
-      warmup: "15 min bieg z narastającą intensywnością, ostatnie 2-3 min na Z3",
-      note: "Jedyna sesja jakościowa tygodnia — masz za sobą jedną normalną noc snu, a do soboty jeszcze bufor. Schody/incline, lekki 'piekący' ból nóg, nie zadyszka. Start 2×8-10 min, buduj do ~40 min. Po sesji Hill Sprinty.",
-      exercises: [
-        { name: "Hill Sprinty (schody/incline, po ME)", sets: 6, reps: "10s", bw: true },
-        { name: "Wspinanie 1h — LUB sesja chwytu (dead hang, farmer walk, wiosłowanie)", sets: 1, reps: "60 min", bw: true },
-        { name: "Dead bug", sets: 3, reps: 12, bw: true },
-        { name: "Pallof press", sets: 3, reps: "12/stronę", bw: true },
-      ],
-    } : {
-      key: "thu", name: "Czwartek", focus: "Z3 + wspinanie/chwyt", type: "run",
-      warmup: "15 min bieg z narastającą intensywnością",
-      note: "ME zrobiło swoje — dłuższe, ostrzejsze podejścia (Z3). Hill Sprinty 1x/1-2 tyg.",
-      exercises: [
-        { name: "Wspinanie 1h — LUB sesja chwytu (dead hang, farmer walk, wiosłowanie)", sets: 1, reps: "60 min", bw: true },
-        { name: "Dead bug", sets: 3, reps: 12, bw: true },
-        { name: "Pallof press", sets: 3, reps: "12/stronę", bw: true },
-      ],
-    }),
-    {
-      key: "fri", name: "Piątek", focus: "Pull ciężko — plecy + chwyt", type: "gym",
-      warmup: "5 min wiosłowanie/rower + band pull-aparts 2x15",
-      note: "Główna sesja pod Twój priorytet (plecy, chwyt, podciąganie). Bieg tylko łatwy Z1 (30-40 min) albo wcale. ZERO pracy na nogi — jutro long i to on jest najważniejszy.",
-      exercises: [
-        { name: wk <= 2 ? "Negatywy podciągania" : "Podciąganie z gumą", sets: 4, reps: wk <= 2 ? "3-5" : "6-8" },
-        { name: "Lat pulldown / wiosłowanie gumą (garaż)", sets: 4, reps: 10 },
-        { name: "Wiosłowanie sztangą / hantlą", sets: 4, reps: 10 },
-        { name: "Dead hang (otwarta dłoń — chwyt pod wspinanie)", sets: 3, reps: "max czas" },
-        { name: "Farmer walk", sets: 3, reps: "40m" },
-        { name: "Uginanie ramion (biceps)", sets: 3, reps: 12 },
+        { name: "Podciąganie (negatywy / z gumą / pełne)", sets: 5, reps: "3-6" },
+        { name: "Pompki — ciężkie (nogi wyżej / diamentowe)", sets: 4, reps: "6-10", bw: true },
+        { name: "Wiosłowanie gumą / australijskie", sets: 4, reps: "8-12" },
+        { name: "Dead hang (chwyt pod wspinanie)", sets: 3, reps: "max czas" },
+        { name: "Dipsy na poręczach", sets: 3, reps: "max", bw: true },
+        { name: "CORE: Hanging leg raises (drążek)", sets: 3, reps: 10, bw: true },
+        { name: "CORE: Plank", sets: 3, reps: "45s", bw: true },
+        { name: "CORE: Pallof press (guma)", sets: 3, reps: "12/stronę", bw: true },
       ],
     },
     {
-      key: "sat", name: "Sobota", focus: "Long Run + prehab nóg", type: "long",
-      warmup: "10 min marszobieg + dynamiczne rozciąganie nóg",
-      note: "Najważniejsza sesja tygodnia — 4. dzień od ostatniej nocki, najlepiej wypoczęty. Long run 16-24 km, HR cap 135, płasko, tempo bez znaczenia. Ćwicz fueling jak na wyścigu. Prehab PO biegu, lekko.",
+      key: "thu", name: "Czwartek", focus: "Siłownia — NOGI", type: "gym",
+      warmup: "5 min rower + mobilizacja bioder i kostek, 1 seria na pustej sztandze",
+      note: `Bieg Z1/Z2 przed lub osobno, HR pod kontrolą (patrz zasady). Nogi: ciężar pod siłę, 4-6 powtórzeń, nie 12. Objętość niska — to ma wspierać bieganie, nie je zabijać.`,
       exercises: [
-        { name: "Ekscentryczny step-down (3s w dół) — pod zbiegi", sets: 3, reps: "10/noga" },
+        { name: "Przysiad ze sztangą", sets: 4, reps: "5" },
+        { name: "Martwy ciąg rumuński", sets: 3, reps: "6" },
+        { name: "Step-up z plecakiem (najbardziej specyficzne pod podejścia)", sets: 4, reps: "10/noga" },
+        { name: "Wspięcia na palce", sets: 3, reps: 12 },
         { name: "Stabilizacja prawej kostki (balans + guma)", sets: 3, reps: "30s / 15", bw: true },
-        { name: "Glute bridge (prawy pośladek)", sets: 3, reps: 15, bw: true },
-        { name: "Hollow body hold", sets: 3, reps: "30s", bw: true },
+        { name: "Glute bridge / hip thrust — prawy pośladek", sets: 3, reps: 12 },
+        { name: "Ekscentryczny step-down (3s w dół) — pod zbiegi", sets: 3, reps: "8/noga" },
+        { name: "Nordic curl / negatywy dwugłowego", sets: 3, reps: "5", bw: true },
+        { name: "Mini-banda: clamshell + monster walk (prawy pośladek)", sets: 2, reps: "15/stronę", bw: true },
       ],
     },
     {
-      key: "sun", name: "Niedziela", focus: "Base run + core (przed nockami)", type: "run",
-      warmup: "5-10 min marszu przed truchtem",
-      note: "Back-to-back z sobotą — ta sama adaptacja co pod Jurassic Coast. ALE: o 18:00 wchodzisz w trzy nocki. Ma być łatwo (HR cap 120, 8-12 km), nie druga sesja jakościowa. Lepiej skończyć niedosyconym niż wejść w pracę wyczerpanym.",
+      key: "fri", name: "Piątek", focus: "Siłownia — PLECY + chwyt", type: "gym",
+      warmup: "5 min wiosłowanie + band pull-aparts 2x15",
+      note: "Główna sesja pod wspinanie i podciąganie. Bieg tylko łatwy Z1 albo wcale — jutro long.",
       exercises: [
-        { name: "Side plank", sets: 3, reps: "30s/stronę", bw: true },
-        { name: "Leg raises", sets: 3, reps: 15, bw: true },
-        { name: "Bird dog", sets: 3, reps: "10/stronę", bw: true },
+        { name: "Podciąganie (progresja z garażu)", sets: 5, reps: "3-6" },
+        { name: "Wiosłowanie sztangą / hantlą", sets: 4, reps: "6-8" },
+        { name: "Lat pulldown / podciąganie z gumą", sets: 3, reps: "8-10" },
+        { name: "Farmer walk", sets: 3, reps: "40m" },
+        { name: "Dead hang / hangboard na chwytach", sets: 4, reps: "max czas" },
+        { name: "Face pull / rear delt", sets: 3, reps: 15 },
+        { name: "CORE: Hanging leg raises", sets: 3, reps: 10, bw: true },
+        { name: "CORE: Hollow body hold", sets: 3, reps: "30s", bw: true },
+        { name: "CORE: Dead bug", sets: 3, reps: 12, bw: true },
+      ],
+    },
+    {
+      key: "sat", name: "Sobota", focus: "Long run + KLATKA/GÓRA", type: "long",
+      warmup: "10 min marszobieg + dynamiczne rozciąganie nóg",
+      note: "Najważniejsza sesja tygodnia — 4. dzień od nocek, najlepiej wypoczęty. Long run Z1/Z2, HR cap wg zasad, tempo bez znaczenia. Ćwicz fueling. Siłownia PO biegu, RPE ≤6.",
+      exercises: [
+        { name: "Wyciskanie sztangi / hantli", sets: 4, reps: "5-8" },
+        { name: "Incline dumbbell press", sets: 3, reps: "8-10" },
+        { name: "Wyciskanie nad głowę (OHP)", sets: 3, reps: "6-8" },
+        { name: "Dips / pompki na poręczach", sets: 3, reps: "max", bw: true },
+        { name: "Drills techniczne po biegu: skip A/B, wysokie kolana", sets: 2, reps: "30m każde", bw: true },
+        { name: "CORE: Hollow body hold", sets: 3, reps: "30s", bw: true },
+        { name: "CORE: Side plank", sets: 3, reps: "30s/stronę", bw: true },
+        { name: "CORE: Bird dog", sets: 3, reps: "10/stronę", bw: true },
       ],
     },
   ];
@@ -267,11 +251,22 @@ async function analyzeMealText(description) {
   return resp.json();
 }
 
+async function fetchWeekReview(current, history) {
+  const resp = await fetch("/api/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "review", current, history }),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return resp.json();
+}
+
 // ---------- storage ----------
 const emptyDay = () => ({
   meals: [], burned: "", sleepTime: "", wakeTime: "", weight: "",
   exercises: [], program: { done: false, ex: {}, comment: "" },
   run: { km: "", timeMin: "", elevation: "" },
+  amrap: { dips: "", pushups: "" },
 });
 
 async function loadDay(date) {
@@ -871,7 +866,24 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
         })()}
         <div className="text-xs mt-2 pt-2" style={{ color: C.inkSoft, borderTop: `1px solid ${C.paperDim}` }}>
           <span style={{ color: C.amber }}>Kiedy biegać: </span>
-          niedziela — na czczo ok. Czwartek/sobota (jakościowe) — węgle 60-90 min przed.
+          Czwartek/sobota (jakościowe) — węgle 60-90 min przed. Nigdy na czczo w te dni.
+        </div>
+      </div>
+
+      <div className="p-3 mb-5" style={{ background: C.paper, borderRadius: 2 }}>
+        <div className="text-xs uppercase tracking-widest mb-2" style={{ color: C.inkSoft }}>AMRAP test — dipsy / pompki</div>
+        <div className="text-xs mb-2" style={{ color: C.inkSoft }}>Jedna seria na max powtórzeń. Rób przy deloadzie (co 4. tydzień) albo kiedy chcesz sprawdzić progres.</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Dipsy (powt.)</div>
+            <input type="number" placeholder="np. 18" value={data.amrap?.dips || ""} onChange={(e) => persist({ ...data, amrap: { ...(data.amrap || {}), dips: e.target.value } })}
+              className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Pompki (powt.)</div>
+            <input type="number" placeholder="np. 35" value={data.amrap?.pushups || ""} onChange={(e) => persist({ ...data, amrap: { ...(data.amrap || {}), pushups: e.target.value } })}
+              className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+          </div>
         </div>
       </div>
 
@@ -881,16 +893,17 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
       </div>
 
       <div className="p-3 mb-3" style={{ background: C.bg, borderRadius: 2 }}>
-        <div className="text-xs mb-1" style={{ color: C.amber }}>Zasady — obecny blok bazy</div>
+        <div className="text-xs mb-1" style={{ color: C.amber }}>Zasady — 8 tyg. bazy + redukcji</div>
         <div className="text-xs space-y-1" style={{ color: C.paper }}>
-          <div>• Tydz. 1-4 baza, 5-12 ME, 13+ Z3/Z4 — automatycznie wg tygodnia</div>
-          <div>• Hill Sprinty: 6-8×10s, więcej powt. zamiast dłuższych</div>
-          <div>• Łatwe biegi niżej niż myślisz — chroń regenerację</div>
-          <div>• Bieganie ↔ pływanie — możesz zamieniać, przyda się pod DWS</div>
-          <div>• Co 4. tydzień = deload (~40-50% objętości), apka pokaże banner</div>
-          <div>• Nocki nd 18:00 → śr 06:00. Pon/wt to praca, nie regeneracja</div>
-          <div>• Śr i nd zawsze łatwo — jakość tylko czwartek, sobota chroniona</div>
+          <div>• SEN JEST LIMITEM: 6h05 przy potrzebie 8h. Adaptacja zachodzi we śnie, nie na treningu</div>
+          <div>• 4 dni treningu (śr-sob). Niedziela zdjęta — wchodzisz po niej w nocki</div>
+          <div>• 8 tyg. czystej bazy Z1/Z2, HR pod 135. Zero jakości</div>
+          <div>• Siła: utrzymanie, nie budowa. Niskie powtórzenia, mała objętość</div>
+          <div>• Co 4. tydzień = deload (~40-50%). Przy deficycie snu nieodpuszczalny</div>
+          <div>• Śr po nockach: drzemka 90-180 min, potem światło dzienne, normalna noc</div>
         </div>
+      </div>
+      </div>
       </div>
 
       <ProgramCard dayPlan={dayPlan} program={data.program} updateEx={updateProgEx} toggleDone={toggleProgDone} prevSession={prevSession} onComment={updateProgComment} />
@@ -922,9 +935,49 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
     </div>
   );
 }
+function buildWeekSummaryText(monday, days, rows, agg) {
+  const lines = [
+    `Tydzień od ${monday}`,
+    `Bieganie: ${agg.totalKm} km, ${agg.totalElev} m przewyższenia, śr. tempo ${agg.avgPaceWeek || "—"}/km`,
+    `Bilans kaloryczny tygodnia: ${agg.totalNet} kcal (cel deficytu 3500)`,
+    `Średni sen: ${agg.avgSleep ?? "—"} h | średnie białko: ${agg.avgProtein} g`,
+    `Waga (ostatni wpis): ${agg.lastWeight || "—"} kg`,
+    `Treningi zaliczone: ${agg.doneCount}/${agg.trainDays}`,
+    `Obciążenia: ${agg.weekLifts.map((l) => `${l.label} ${l.kg ? l.kg + "kg" : "—"}`).join(", ")}`,
+    "Dzień po dniu:",
+  ];
+  rows.forEach((r) => {
+    const d = days.find((x) => x.date === r.date);
+    const comment = d?.data?.program?.comment;
+    lines.push(
+      `  ${shortLabel(r.date)}: ${r.runKm ? r.runKm + "km" : "bez biegu"}${r.runElev ? " +" + r.runElev + "m" : ""}, ` +
+      `spożyte ${r.consumed}kcal, spalone ${r.burned || "—"}, sen ${r.hrs ?? "—"}h, ` +
+      `${r.isTrainDay ? (r.progDone ? "trening zrobiony" : "trening NIEzrobiony") : "wolne"}` +
+      (comment ? ` | komentarz: ${comment}` : "")
+    );
+  });
+  return lines.join("\n");
+}
+
 function WeekView({ date, settings }) {
   const [days, setDays] = useState(null);
+  const [review, setReview] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewErr, setReviewErr] = useState("");
   const monday = getMonday(date);
+
+  // wczytaj zapisaną ocenę dla tego tygodnia
+  useEffect(() => {
+    let cancelled = false;
+    setReview(""); setReviewErr("");
+    (async () => {
+      try {
+        const r = await window.storage.get(`review:${monday}`, false);
+        if (r && !cancelled) setReview(JSON.parse(r.value).text || "");
+      } catch { /* brak oceny */ }
+    })();
+    return () => { cancelled = true; };
+  }, [monday]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1096,6 +1149,59 @@ function WeekView({ date, settings }) {
         ))}
       </div>
 
+      <div className="p-4 mb-5" style={{ background: C.paper, borderRadius: 3 }}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs uppercase tracking-widest" style={{ color: C.inkSoft }}>Ocena trenera</div>
+          <button
+            onClick={async () => {
+              setReviewBusy(true); setReviewErr("");
+              try {
+                const cur = buildWeekSummaryText(monday, days, rows, {
+                  totalNet, avgSleep, avgProtein, doneCount, trainDays: trainDays.length,
+                  lastWeight, totalKm, totalElev, avgPaceWeek, weekLifts,
+                });
+                // zbierz 3 poprzednie tygodnie
+                const hist = [];
+                for (let w = 1; w <= 3; w++) {
+                  const m = addDays(monday, -7 * w);
+                  const ds = await Promise.all(
+                    Array.from({ length: 7 }, (_, i) => loadDay(addDays(m, i)))
+                  );
+                  const km = ds.reduce((a, d) => a + (Number(d.run?.km) || 0), 0);
+                  const elev = ds.reduce((a, d) => a + (Number(d.run?.elevation) || 0), 0);
+                  const kcal = ds.reduce((a, d) => a + d.meals.reduce((x, m2) => x + (Number(m2.kcal) || 0), 0), 0);
+                  const burn = ds.reduce((a, d) => a + (Number(d.burned) || 0), 0);
+                  const wts = ds.map((d) => d.weight).filter(Boolean);
+                  const done = ds.filter((d) => d.program?.done).length;
+                  if (km || kcal || wts.length || done) {
+                    hist.push(`Tydzień od ${m}: ${Math.round(km * 10) / 10} km, ${Math.round(elev)} m+, bilans ${burn - kcal} kcal, waga ${wts[wts.length - 1] || "—"} kg, treningi ${done}/4`);
+                  }
+                }
+                const res = await fetchWeekReview(cur, hist.join("\n"));
+                setReview(res.text);
+                await window.storage.set(`review:${monday}`, JSON.stringify({ text: res.text }), false);
+              } catch (err) {
+                setReviewErr("Błąd: " + (err?.message || String(err)).slice(0, 200));
+              } finally { setReviewBusy(false); }
+            }}
+            disabled={reviewBusy}
+            className="px-3 py-1.5 text-xs flex items-center gap-1"
+            style={{ background: C.amber, color: C.ink, borderRadius: 2, opacity: reviewBusy ? 0.6 : 1 }}
+          >
+            {reviewBusy ? <Loader2 size={13} className="animate-spin" /> : null}
+            {reviewBusy ? "Analizuję…" : review ? "Odśwież ocenę" : "Oceń tydzień"}
+          </button>
+        </div>
+        {reviewErr && <div className="text-xs mb-2" style={{ color: C.rust }}>{reviewErr}</div>}
+        {review ? (
+          <div className="text-sm whitespace-pre-wrap" style={{ color: C.ink, lineHeight: 1.5 }}>{review}</div>
+        ) : (
+          <div className="text-xs" style={{ color: C.inkSoft }}>
+            Kliknij, żeby dostać ocenę tygodnia i porównanie z poprzednimi trzema.
+          </div>
+        )}
+      </div>
+
       <div className="mt-5">
         <ExportPanel
           label="📋 Eksportuj cały tydzień"
@@ -1159,6 +1265,10 @@ function MonthView({ monthStr, setMonthStr, settings }) {
   });
 
   const weightChart = weightEntries.map((w) => ({ day: parseDate(w.date).getDate(), Waga: w.w }));
+
+  const amrapEntries = days.filter((d) => d.data.amrap?.dips || d.data.amrap?.pushups)
+    .map((d) => ({ date: d.date, dips: d.data.amrap?.dips || null, pushups: d.data.amrap?.pushups || null }));
+  const amrapFirst = amrapEntries[0], amrapLast = amrapEntries[amrapEntries.length - 1];
 
   return (
     <div>
@@ -1233,6 +1343,26 @@ function MonthView({ monthStr, setMonthStr, settings }) {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="p-4 mb-5" style={{ background: C.paper, borderRadius: 3 }}>
+        <div className="text-xs uppercase tracking-widest mb-2" style={{ color: C.inkSoft }}>AMRAP — dipsy / pompki</div>
+        {amrapEntries.length === 0 ? (
+          <div className="text-xs" style={{ color: C.inkSoft }}>Brak testów w tym miesiącu.</div>
+        ) : amrapEntries.length === 1 ? (
+          <div className="text-sm" style={{ color: C.ink }}>
+            {amrapFirst.date}: dipsy {amrapFirst.dips || "—"}, pompki {amrapFirst.pushups || "—"}
+          </div>
+        ) : (
+          <div className="space-y-1 text-sm">
+            <div style={{ color: C.ink }}>
+              Dipsy: {amrapFirst.dips || "—"} → <span style={{ color: C.teal, fontWeight: 600 }}>{amrapLast.dips || "—"}</span>
+            </div>
+            <div style={{ color: C.ink }}>
+              Pompki: {amrapFirst.pushups || "—"} → <span style={{ color: C.teal, fontWeight: 600 }}>{amrapLast.pushups || "—"}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <ExportPanel
