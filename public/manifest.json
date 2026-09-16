@@ -1,0 +1,9 @@
+{
+  "name": "Dziennik Kalorii",
+  "short_name": "Dziennik",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#14181A",
+  "theme_color": "#14181A",
+  "orientation": "portrait"
+}
