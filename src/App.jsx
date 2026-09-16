@@ -95,7 +95,7 @@ function buildProgram(week) {
     {
       key: "thu", name: "Czwartek", focus: "Siłownia — NOGI", type: "gym",
       warmup: "5 min rower + mobilizacja bioder i kostek, 1 seria na pustej sztandze",
-      note: `Bieg Z1/Z2 przed lub osobno, HR pod kontrolą (patrz zasady). Nogi: ciężar pod siłę, 4-6 powtórzeń, nie 12. Objętość niska — to ma wspierać bieganie, nie je zabijać.`,
+      note: `Bieg Z1/Z2 przed lub osobno, HR pod kontrolą (patrz zasady). Nogi: ciężar pod siłę, 4-6 powtórzeń, nie 12. Objętość niska — to ma wspierać bieganie, nie je zabijać. Eksperyment: 15g żelatyny/kolagenu + wit. C (+ elektrolity jeśli chcesz), 30-60 min przed — pod prawe kolano. Zapisz w komentarzu czy coś czujesz.`,
       exercises: [
         { name: "Przysiad ze sztangą", sets: 4, reps: "5" },
         { name: "Martwy ciąg rumuński", sets: 3, reps: "6" },
@@ -127,7 +127,7 @@ function buildProgram(week) {
     {
       key: "sat", name: "Sobota", focus: "Long run + KLATKA/GÓRA", type: "long",
       warmup: "10 min marszobieg + dynamiczne rozciąganie nóg",
-      note: "Najważniejsza sesja tygodnia — 4. dzień od nocek, najlepiej wypoczęty. Long run Z1/Z2, HR cap wg zasad, tempo bez znaczenia. Ćwicz fueling. Siłownia PO biegu, RPE ≤6.",
+      note: "Najważniejsza sesja tygodnia — 4. dzień od nocek, najlepiej wypoczęty. Long run Z1/Z2, HR cap wg zasad, tempo bez znaczenia. Ćwicz fueling, elektrolity co 45-60 min. Eksperyment: 15g żelatyny/kolagenu + wit. C, 30-60 min przed biegiem — pod prawe kolano, zapisz w komentarzu efekt. Siłownia PO biegu, RPE ≤6.",
       exercises: [
         { name: "Wyciskanie sztangi / hantli", sets: 4, reps: "5-8" },
         { name: "Incline dumbbell press", sets: 3, reps: "8-10" },
@@ -214,7 +214,7 @@ function buildDayExportLine(dateStr, data, settings, prevBedtime) {
   return [
     `${dateStr} (${dayLabel(dateStr)})`,
     `  bilans: spożyte ${t.kcal}kcal (B${t.protein}/T${t.fat}/W${t.carbs}) | spalone ${burned || "—"} | netto ${net >= 0 ? "-" : "+"}${Math.abs(net)}`,
-    `  sen (noc): ${hrs != null ? hrs + "h" : "—"} (spać ${prevBedtime || "?"} → wstał ${data.wakeTime || "?"}) | poszedł spać dziś: ${data.sleepTime || "—"} | waga: ${data.weight || "—"}kg`,
+    `  sen (noc): ${hrs != null ? hrs + "h" : "—"} (spać ${prevBedtime || "?"} → wstał ${data.wakeTime || "?"}) | poszedł spać dziś: ${data.sleepTime || "—"} | waga: ${data.weight || "—"}kg${data.bodyComp?.fat ? `, tłuszcz ${data.bodyComp.fat}%` : ""}${data.bodyComp?.muscle ? `, mięśnie ${data.bodyComp.muscle}kg` : ""}${data.bodyComp?.bone ? `, kości ${data.bodyComp.bone}kg` : ""}${data.bodyComp?.water ? `, woda ${data.bodyComp.water}%` : ""}`,
     `  bieg: ${runStr}`,
     `  posiłki: ${mealsStr}`,
     `  program: ${progSummary ? progSummary + (data.program?.done ? " [dzień oznaczony jako zrobiony]" : "") : "brak planu na ten dzień"}`,
@@ -266,6 +266,7 @@ const emptyDay = () => ({
   meals: [], burned: "", sleepTime: "", wakeTime: "", weight: "",
   exercises: [], program: { done: false, ex: {}, comment: "" },
   run: { km: "", timeMin: "", elevation: "" },
+  bodyComp: { fat: "", muscle: "", bone: "", water: "" },
   amrap: { dips: "", pushups: "" },
 });
 
@@ -523,6 +524,10 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
   const [textDesc, setTextDesc] = useState("");
   const [textBusy, setTextBusy] = useState(false);
   const [textError, setTextError] = useState("");
+  const [labelName, setLabelName] = useState("");
+  const [labelP, setLabelP] = useState("");
+  const [labelF, setLabelF] = useState("");
+  const [labelC, setLabelC] = useState("");
 
   const persist = useCallback(async (next, opts = {}) => {
     setData(next);
@@ -536,6 +541,20 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
   }, [date, setData, onSaved]);
 
   const handleManualSave = () => persist(data);
+
+  const handleLabelMeal = () => {
+    const p = Number(labelP) || 0, f = Number(labelF) || 0, c = Number(labelC) || 0;
+    if (!p && !f && !c) return;
+    const kcal = Math.round(p * 4 + f * 9 + c * 4);
+    const meal = {
+      id: Date.now(),
+      time: `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`,
+      name: labelName.trim() || "Z etykiety",
+      kcal, protein: p, fat: f, carbs: c, details: "",
+    };
+    persist({ ...data, meals: [...data.meals, meal] });
+    setLabelName(""); setLabelP(""); setLabelF(""); setLabelC("");
+  };
 
   const handleTextMeal = async () => {
     if (!textDesc.trim()) return;
@@ -659,6 +678,26 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
   }, [date]);
   const hrs = sleepHours(prevBedtime, data.wakeTime);
 
+  const [lastWeighIn, setLastWeighIn] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // celujemy dokładnie w -7 dni (ten sam dzień tygodnia, realny progres tydzień-do-tygodnia),
+      // z marginesem ±3 dni gdyby akurat wtedy nie było wpisu — bliżej 7 ma pierwszeństwo
+      const offsets = [7, 6, 8, 5, 9, 4, 10];
+      for (const off of offsets) {
+        const cand = addDays(date, -off);
+        const cd = await loadDay(cand);
+        if (cd.weight || cd.bodyComp?.fat || cd.bodyComp?.muscle || cd.bodyComp?.bone || cd.bodyComp?.water) {
+          if (!cancelled) setLastWeighIn({ date: cand, offset: off, weight: cd.weight, ...cd.bodyComp });
+          return;
+        }
+      }
+      if (!cancelled) setLastWeighIn(null);
+    })();
+    return () => { cancelled = true; };
+  }, [date]);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -725,8 +764,9 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
       <div className="p-4 mb-5" style={{ background: C.paper, borderRadius: 3 }}>
         <div className="text-xs uppercase tracking-widest mb-2" style={{ color: C.inkSoft }}>Co i kiedy</div>
         <div className="text-xs space-y-1" style={{ color: C.ink }}>
-          <div><span style={{ color: C.amber }}>Rano/dzień:</span> słono/białkowo, bez węglowodanów.</div>
-          <div><span style={{ color: C.amber }}>Wieczorem:</span> jedyna pora na węglowodany.</div>
+          <div><span style={{ color: C.amber }}>Rano/dzień:</span> białko + tłuszcz sycą, nie sól. Słone posiłki działają, bo są białkowe — słodkie z tym samym białkiem sycą tak samo.</div>
+          <div><span style={{ color: C.amber }}>Wieczorem:</span> jedyna pora na węglowodany — złożone (owies, ryż brązowy, kasza), nie proste. Stabilny cukier, nie budzi w nocy.</div>
+          <div><span style={{ color: C.amber }}>Wyjątek — proste:</span> pre-workout (60-90 min przed czw/sob) i zaraz po długim biegu — banan, miód, biały ryż. Szybko dostępne, szybka odbudowa glikogenu.</div>
           <div><span style={{ color: C.amber }}>Białko:</span> ~4×35-40g co 3-4h, nie 1-2 duże porcje.</div>
           <div><span style={{ color: C.amber }}>Dni jakościowe (czw. ME/Sprinty, sob. long):</span> trochę węgli 60-90 min przed.</div>
         </div>
@@ -735,10 +775,16 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
       <div className="p-4 mb-5" style={{ background: C.paper, borderRadius: 3 }}>
         <div className="text-xs uppercase tracking-widest mb-2" style={{ color: C.inkSoft }}>Suplementacja</div>
         <div className="text-xs space-y-1" style={{ color: C.ink }}>
-          <div><span style={{ color: C.amber }}>Rano, na czczo:</span> UC-II (stawy)</div>
+          <div><span style={{ color: C.amber }}>Rano, na czczo:</span> UC-II (stawy), tart cherry 30ml</div>
           <div><span style={{ color: C.amber }}>Ze śniadaniem:</span> wit. D, omega-3, kreatyna</div>
           <div><span style={{ color: C.amber }}>W dzień:</span> multiwitamina (osobno od żelaza/cynku, min. 2h)</div>
-          <div><span style={{ color: C.amber }}>Wieczorem:</span> cynk + magnez (osobno od żelaza)</div>
+          <div><span style={{ color: C.amber }}>Wieczorem:</span> cynk + magnez (osobno od żelaza), tart cherry 30ml (30-60 min przed snem)</div>
+          <div style={{ color: C.inkSoft, borderTop: `1px solid ${C.paperDim}`, paddingTop: 6, marginTop: 4 }}>
+            <span style={{ color: C.rust }}>Tylko wyścigi:</span> Beet It Sport — ładowanie 4-6 dni przed (1 shot/dzień), + shot 90 min-2,5h przed startem. Nie na treningach.
+          </div>
+          <div style={{ color: C.inkSoft }}>
+            <span style={{ color: C.rust }}>Długi bieg (sobota, wyścig):</span> elektrolity w płynie co 45-60 min — sód, nie tylko woda. Twój pomiar potu: ~2,9L/3h.
+          </div>
         </div>
       </div>
 
@@ -770,6 +816,41 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
         </button>
       </div>
       {textError && <div className="text-xs mb-3 px-1" style={{ color: C.rust }}>{textError}</div>}
+
+      <div className="p-3 mb-3" style={{ background: C.paper, borderRadius: 2 }}>
+        <div className="text-xs mb-2" style={{ color: C.inkSoft }}>albo wpisz z etykiety (B/T/W) — bez AI, liczy się samo</div>
+        <input
+          type="text" placeholder="nazwa (opcjonalnie)" value={labelName}
+          onChange={(e) => setLabelName(e.target.value)}
+          className="w-full text-sm bg-transparent outline-none mb-2" style={{ color: C.ink, borderBottom: `1px solid ${C.line}` }}
+        />
+        <div className="grid grid-cols-3 gap-2 mb-2">
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Białko (g)</div>
+            <input type="number" placeholder="0" value={labelP} onChange={(e) => setLabelP(e.target.value)}
+              className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Tłuszcz (g)</div>
+            <input type="number" placeholder="0" value={labelF} onChange={(e) => setLabelF(e.target.value)}
+              className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Węgle (g)</div>
+            <input type="number" placeholder="0" value={labelC} onChange={(e) => setLabelC(e.target.value)}
+              className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+          </div>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-mono" style={{ color: C.inkSoft }}>
+            = {Math.round((Number(labelP) || 0) * 4 + (Number(labelF) || 0) * 9 + (Number(labelC) || 0) * 4)} kcal
+          </span>
+          <button onClick={handleLabelMeal} disabled={!labelP && !labelF && !labelC}
+            className="px-3 py-1.5 text-xs" style={{ background: C.amber, color: C.ink, borderRadius: 2, opacity: (labelP || labelF || labelC) ? 1 : 0.5 }}>
+            Dodaj
+          </button>
+        </div>
+      </div>
 
       <div className="space-y-2 mb-5">
         {data.meals.length === 0 && (
@@ -810,34 +891,60 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
         <input type="number" placeholder="kcal" value={data.burned} onChange={(e) => persist({ ...data, burned: e.target.value })}
           className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
       </div>
-      <div className="grid grid-cols-2 gap-3 mb-3">
-        <div className="p-3" style={{ background: C.paper, borderRadius: 2 }}>
-          <div className="text-xs flex items-center gap-1 mb-1" style={{ color: C.inkSoft }}><Moon size={12} /> Wstałem (dziś rano)</div>
-          <input type="time" value={data.wakeTime} onChange={(e) => persist({ ...data, wakeTime: e.target.value })}
-            className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
-          <div className="text-xs mt-1 flex items-center gap-1 flex-wrap" style={{ color: C.inkSoft }}>
-            <span>wczoraj poszedł spać:</span>
-            <input type="time" value={prevBedtime} onChange={async (e) => {
-              const v = e.target.value; setPrevBedtime(v);
-              const yData = await loadDay(addDays(date, -1));
-              await saveDay(addDays(date, -1), { ...yData, sleepTime: v });
-            }} className="bg-transparent outline-none font-mono" style={{ color: C.ink, borderBottom: `1px solid ${C.line}` }} />
-          </div>
-          <div className="text-xs mt-1" style={{ color: hrs != null ? C.teal : C.inkSoft }}>
-            {hrs != null ? `sen: ${hrs} h` : "uzupełnij obie godziny, żeby policzyć sen"}
-          </div>
+      <div className="p-3 mb-3" style={{ background: C.paper, borderRadius: 2 }}>
+        <div className="text-xs flex items-center gap-1 mb-1" style={{ color: C.inkSoft }}><Sun size={12} /> Wstałem (dziś rano)</div>
+        <input type="time" value={data.wakeTime} onChange={(e) => persist({ ...data, wakeTime: e.target.value })}
+          className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+        <div className="text-xs mt-1 flex items-center gap-1 flex-wrap" style={{ color: C.inkSoft }}>
+          <span>wczoraj poszedł spać:</span>
+          <input type="time" value={prevBedtime} onChange={async (e) => {
+            const v = e.target.value; setPrevBedtime(v);
+            const yData = await loadDay(addDays(date, -1));
+            await saveDay(addDays(date, -1), { ...yData, sleepTime: v });
+          }} className="bg-transparent outline-none font-mono" style={{ color: C.ink, borderBottom: `1px solid ${C.line}` }} />
         </div>
-        <div className="p-3" style={{ background: C.paper, borderRadius: 2 }}>
-          <div className="text-xs flex items-center gap-1 mb-1" style={{ color: C.inkSoft }}><Sun size={12} /> Poszedłem spać (dziś wieczorem)</div>
-          <input type="time" value={data.sleepTime} onChange={(e) => persist({ ...data, sleepTime: e.target.value })}
-            className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
-          <div className="text-xs mt-1" style={{ color: C.inkSoft }}>policzy się jutro rano</div>
+        <div className="text-xs mt-1" style={{ color: hrs != null ? C.teal : C.inkSoft }}>
+          {hrs != null ? `sen: ${hrs} h` : "uzupełnij obie godziny, żeby policzyć sen"}
         </div>
       </div>
       <div className="p-3 mb-5" style={{ background: C.paper, borderRadius: 2 }}>
-        <div className="text-xs flex items-center gap-1 mb-1" style={{ color: C.inkSoft }}><Scale size={12} /> Waga (kg)</div>
-        <input type="number" step="0.1" placeholder="np. 96.4" value={data.weight} onChange={(e) => persist({ ...data, weight: e.target.value })}
-          className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+        <div className="text-xs flex items-center gap-1 mb-1" style={{ color: C.inkSoft }}><Scale size={12} /> Waga i skład ciała</div>
+        <div className="grid grid-cols-2 gap-3 mb-2">
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Waga (kg)</div>
+            <input type="number" step="0.1" placeholder="np. 96.4" value={data.weight} onChange={(e) => persist({ ...data, weight: e.target.value })}
+              className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Tłuszcz (%)</div>
+            <input type="number" step="0.1" placeholder="np. 22.0" value={data.bodyComp?.fat || ""} onChange={(e) => persist({ ...data, bodyComp: { ...(data.bodyComp || {}), fat: e.target.value } })}
+              className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Mięśnie (kg)</div>
+            <input type="number" step="0.1" placeholder="np. 40.0" value={data.bodyComp?.muscle || ""} onChange={(e) => persist({ ...data, bodyComp: { ...(data.bodyComp || {}), muscle: e.target.value } })}
+              className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Kości (kg)</div>
+            <input type="number" step="0.1" placeholder="np. 3.2" value={data.bodyComp?.bone || ""} onChange={(e) => persist({ ...data, bodyComp: { ...(data.bodyComp || {}), bone: e.target.value } })}
+              className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Woda (%)</div>
+            <input type="number" step="0.1" placeholder="np. 55.0" value={data.bodyComp?.water || ""} onChange={(e) => persist({ ...data, bodyComp: { ...(data.bodyComp || {}), water: e.target.value } })}
+              className="w-full bg-transparent outline-none text-lg font-mono" style={{ color: C.ink }} />
+          </div>
+        </div>
+        {lastWeighIn && (
+          <div className="text-xs pt-2 mt-1" style={{ color: C.inkSoft, borderTop: `1px solid ${C.paperDim}` }}>
+            {lastWeighIn.offset === 7 ? "Tydzień temu" : `Sprzed ${lastWeighIn.offset} dni`} ({lastWeighIn.date}): {lastWeighIn.weight || "—"}kg
+            {lastWeighIn.fat ? ` · tłuszcz ${lastWeighIn.fat}%` : ""}
+            {lastWeighIn.muscle ? ` · mięśnie ${lastWeighIn.muscle}kg` : ""}
+            {lastWeighIn.bone ? ` · kości ${lastWeighIn.bone}kg` : ""}
+            {lastWeighIn.water ? ` · woda ${lastWeighIn.water}%` : ""}
+          </div>
+        )}
       </div>
 
       <div className="p-3 mb-5" style={{ background: C.paper, borderRadius: 2 }}>
@@ -902,8 +1009,6 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
           <div>• Co 4. tydzień = deload (~40-50%). Przy deficycie snu nieodpuszczalny</div>
           <div>• Śr po nockach: drzemka 90-180 min, potem światło dzienne, normalna noc</div>
         </div>
-      </div>
-      </div>
       </div>
 
       <ProgramCard dayPlan={dayPlan} program={data.program} updateEx={updateProgEx} toggleDone={toggleProgDone} prevSession={prevSession} onComment={updateProgComment} />
