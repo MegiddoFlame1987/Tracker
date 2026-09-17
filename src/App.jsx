@@ -1844,6 +1844,112 @@ function WeekView({ date, settings }) {
 }
 
 // ---------- Month view ----------
+// ---------- PLAN: os periodyzacji z datami ----------
+function PlanView({ date, settings }) {
+  const start = settings?.startDate;
+  if (!start) {
+    return (
+      <div className="text-sm p-4" style={{ color: C.inkSoft, background: C.paper, borderRadius: 3 }}>
+        Ustaw datę startu programu w zakładce DZIEŃ (pasek nad Programem Silnik). Bez niej nie ma od czego liczyć tygodni.
+      </div>
+    );
+  }
+  const mon0 = getMonday(start);
+  const todayWeek = computeWeek(date, start);
+
+  // os ciagnie sie poza 24 tydzien az do pierwszego wyscigu: to jest blok specyfiki,
+  // rozpisywany szczegolowo 6-8 tygodni przed startem
+  const firstRace = RACES.map((r) => r.date).sort()[0];
+  let lastWeek = TOTAL_WEEKS;
+  while (addDays(mon0, lastWeek * 7 - 1) < firstRace && lastWeek < 80) lastWeek += 1;
+
+  const rows = [];
+  for (let w = 1; w <= lastWeek; w++) {
+    const from = addDays(mon0, (w - 1) * 7);
+    const to = addDays(from, 6);
+    const spec = w > TOTAL_WEEKS;
+    const b = spec
+      ? { name: "Specyfika wyścigowa", weekInBlock: w - TOTAL_WEEKS, rule: "" }
+      : blockForWeek(w);
+    const deload = w % 4 === 0;
+    const racesHere = RACES.filter((r) => r.date >= from && r.date <= to);
+    rows.push({ w, from, to, block: b, deload, spec, racesHere, current: w === todayWeek });
+  }
+
+  const short = (d) => parseDate(d).toLocaleDateString("pl-PL", { day: "numeric", month: "short" });
+  const raceRows = RACES.map((r) => ({ ...r, diff: Math.round((parseDate(r.date) - parseDate(date)) / 86400000) }));
+  const planEnd = addDays(mon0, lastWeek * 7 - 1);
+
+  const blockColor = (name) => (name.startsWith("Baza") ? C.teal : name.startsWith("Specyfika") ? C.line : C.rust);
+
+  return (
+    <div>
+      <div className="text-center mb-5">
+        <div className="text-xs uppercase tracking-widest" style={{ color: C.amber, fontFamily: "ui-monospace, monospace" }}>
+          Oś periodyzacji
+        </div>
+        <div className="text-lg font-serif" style={{ color: C.paper }}>
+          {short(mon0)} … {short(planEnd)}
+        </div>
+      </div>
+
+      <div className="p-4 mb-5" style={{ background: C.paper, borderRadius: 3 }}>
+        <div className="text-xs uppercase tracking-widest mb-2" style={{ color: C.inkSoft }}>Cele</div>
+        <div className="space-y-1">
+          {raceRows.map((r) => (
+            <div key={r.date} className="flex justify-between text-sm" style={{ color: C.ink }}>
+              <span>{r.label}</span>
+              <span className="font-mono text-xs" style={{ color: r.diff < 0 ? C.inkSoft : C.rust }}>
+                {short(r.date)} · {r.diff < 0 ? "za nami" : `za ${r.diff} dni`}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="text-xs mt-2 pt-2" style={{ color: C.inkSoft, borderTop: `1px solid ${C.paperDim}` }}>
+          Bloki po pierwszym wyścigu rozpisujemy 6-8 tygodni przed każdym, nie teraz.
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        {rows.map((r) => (
+          <div key={r.w} className="p-2 flex items-center gap-3"
+            style={{
+              background: r.current ? C.paperDim : C.paper,
+              borderRadius: 2,
+              borderLeft: `3px solid ${r.deload ? C.amber : blockColor(r.block.name)}`,
+            }}>
+            <div className="font-mono text-xs w-7 shrink-0" style={{ color: r.current ? C.rust : C.inkSoft }}>
+              {r.w}
+            </div>
+            <div className="font-mono text-xs w-24 shrink-0" style={{ color: C.inkSoft }}>
+              {short(r.from)}–{short(r.to)}
+            </div>
+            <div className="text-xs flex-1" style={{ color: C.ink }}>
+              {r.block.name}
+              <span style={{ color: C.inkSoft }}>{r.spec ? ` · tydz. ${r.block.weekInBlock}` : ` · tydz. ${r.block.weekInBlock}/6`}</span>
+              {r.deload && <span style={{ color: C.amber }}> · DELOAD</span>}
+              {r.current && <span style={{ color: C.rust }}> · TU JESTEŚ</span>}
+            </div>
+            {r.racesHere.map((rc) => (
+              <div key={rc.date} className="text-xs px-1 shrink-0" style={{ background: C.rust, color: C.paper, borderRadius: 2 }}>
+                {rc.label}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <div className="p-3 mt-4 text-xs" style={{ background: C.paper, borderRadius: 2, color: C.inkSoft }}>
+        <div className="mb-1" style={{ color: C.amber }}>Zasady osi</div>
+        <div>Deload co 4. tydzień, objętość w dół o 40-50%. To część planu, nie lenistwo.</div>
+        <div>Blok ME wymaga 4 tygodni bazy za sobą. Nie skracamy tego.</div>
+        <div>Wyjazd lodowy (Słowacja, luty) mieści się w bloku ME, nie jest osobnym blokiem.</div>
+        <div>Po tygodniu {TOTAL_WEEKS} wchodzi specyfika wyścigowa pod 100 km, rozpisywana osobno.</div>
+      </div>
+    </div>
+  );
+}
+
 function MonthView({ monthStr, setMonthStr, settings }) {
   const [days, setDays] = useState(null);
 
@@ -2045,6 +2151,7 @@ export default function CalorieLogbook() {
           <StampButton active={view === "day"} onClick={() => setView("day")}>DZIEŃ</StampButton>
           <StampButton active={view === "week"} onClick={() => { setView("week"); setRefreshKey((k) => k + 1); }}>TYDZIEŃ</StampButton>
           <StampButton active={view === "month"} onClick={() => { setView("month"); setRefreshKey((k) => k + 1); }}>MIESIĄC</StampButton>
+          <StampButton active={view === "plan"} onClick={() => setView("plan")}>PLAN</StampButton>
         </div>
 
         {view === "day" && !loading && (
@@ -2053,6 +2160,7 @@ export default function CalorieLogbook() {
         )}
         {view === "day" && loading && <div style={{ color: C.paper }} className="text-sm text-center">Wczytywanie…</div>}
         {view === "week" && <WeekView date={date} settings={settings} key={refreshKey} />}
+        {view === "plan" && <PlanView date={date} settings={settings} />}
         {view === "month" && <MonthView monthStr={monthStr} setMonthStr={setMonthStr} settings={settings} key={"m" + refreshKey} />}
 
         <div className="text-center mt-8 text-xs" style={{ color: C.inkSoft, fontFamily: "ui-monospace, monospace" }}>
