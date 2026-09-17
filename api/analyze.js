@@ -6,6 +6,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  // Ten sam token co /api/garmin — bez niego każdy, kto zna URL, pali Twoje kredyty
+  const appToken = process.env.APP_TOKEN;
+  if (appToken && req.headers["x-app-token"] !== appToken) {
+    return res.status(401).json({ error: "Brak lub zły token aplikacji" });
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ error: "Brak ANTHROPIC_API_KEY w zmiennych środowiskowych Vercel" });
@@ -27,11 +33,20 @@ export default async function handler(req, res) {
     if (!description) return res.status(400).json({ error: "Brak opisu" });
     content = `Jesteś dietetykiem. Na podstawie opisu posiłku oszacuj jego wartości odżywcze: "${description}". Odpowiedz WYŁĄCZNIE obiektem JSON, bez markdown, w formacie: {"name": "krótka nazwa posiłku po polsku", "kcal": liczba_całkowita, "protein": liczba_całkowita_gramy, "fat": liczba_całkowita_gramy, "carbs": liczba_całkowita_gramy, "details": "krótki opis przyjętych założeń co do porcji"}. Jeśli opis jest niejasny co do ilości, przyjmij typową porcję i wspomnij o tym w details. Bądź realistyczny.`;
   } else if (type === "review") {
-    const { current, history } = req.body;
+    const { current, history, garmin } = req.body;
+    let garminBlock = "brak danych z zegarka";
+    if (Array.isArray(garmin) && garmin.length) {
+      garminBlock = garmin
+        .map((w) => `${w.date}: HRV ${w.hrv ?? "—"}, tętno spoczynkowe ${w.restingHr ?? "—"}, sen ${w.sleepHours ?? "—"}h (score ${w.sleepScore ?? "—"}), gotowość ${w.readiness ?? "—"}, body battery ${w.bodyBattery ?? "—"}`)
+        .join("\n");
+    }
     content = `Jesteś doświadczonym trenerem biegów górskich i ultra. Twój zawodnik: 193cm, ~97kg, wraca po 3-tygodniowej przerwie, jest w 8-tygodniowym bloku czystej bazy Z1/Z2 + redukcji wagi. Cele: ultra 100km (maj 2027), Mont Blanc (lipiec 2027), Snowdonia 80km (wrzesień 2027), wspinanie 6a-c i lodowe. Pracuje na nocki (nd 18:00 - śr 06:00), trenuje śr-nd. Znane problemy: prawa noga krótsza o 2,5cm, ból nad prawym kolanem i prawy pośladek, tętno obecnie wysokie przy łatwym wysiłku (oczekuje na wyniki krwi).
 
 DANE BIEŻĄCEGO TYGODNIA:
 ${current}
+
+DANE Z GARMINA (obiektywne, przez intervals.icu — ważniejsze niż wpisy ręczne):
+${garminBlock}
 
 POPRZEDNIE TYGODNIE (od najnowszego):
 ${history || "brak danych historycznych"}
@@ -55,10 +70,8 @@ Bez wstępów typu "oto ocena". Zacznij od werdyktu. Nie używaj myślników em 
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        // Haiku 4.5: $1/$5 za milion tokenów, 3x taniej niż Sonnet 4.6 ($3/$15).
-        // Ocena tygodnia zostaje na Sonnecie — to jedno wywołanie/tydzień, warto tu jakości.
-        model: type === "review" ? "claude-sonnet-4-6" : "claude-haiku-4-5-20251001",
-        max_tokens: type === "review" ? 700 : 400,
+        model: "claude-sonnet-4-6",
+        max_tokens: type === "review" ? 700 : 1000,
         messages: [{ role: "user", content }],
       }),
     });
