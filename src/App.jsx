@@ -43,7 +43,8 @@ const KEY_LIFTS = [
   { dayKey: "wed", idx: 0, label: "Podciąganie (garaż)" },
   { dayKey: "thu", idx: 0, label: "Przysiad" },
   { dayKey: "thu", idx: 1, label: "RDL" },
-  { dayKey: "fri", idx: 1, label: "Wiosłowanie" },
+  { dayKey: "thu", idx: 2, label: "Step-up z plecakiem" },
+  { dayKey: "fri", idx: 2, label: "Wiosłowanie sztangą" },
   { dayKey: "sat", idx: 0, label: "Wyciskanie sztangi" },
 ];
 
@@ -71,73 +72,315 @@ const PHASES = {
   2: { name: "Faza 2 · Budowa", weeks: [13, 24], kcal: 3100, protein: 180, fat: 90, carbs: 400 },
 };
 const TOTAL_WEEKS = 24;
-const DAY_KEY_BY_DOW = { 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
+const DAY_KEY_BY_DOW = { 0: "sun", 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
 
 function getPhaseForWeek(w) { return w <= 12 ? PHASES[1] : PHASES[2]; }
 
+// tydzien 1-2 = restart po przerwie lipiec-sierpien 2026
+const RESTART_WEEKS = 2;
+
+// Jeden etap dla calego planu: kazda lista cwiczen czyta z tego samego zrodla.
+// 1-2 restart -> 3-6 baza -> 7-12 ME -> 13+ specyfika wyscigowa
+function etapFor(week) {
+  if (!week || week <= RESTART_WEEKS) return "restart";
+  if (week <= 6) return "baza";
+  if (week <= 12) return "me";
+  return "spec";
+}
+const ETAP_LABEL = { restart: "restart", baza: "baza", me: "ME", spec: "specyfika" };
+const pick = (week, map) => map[etapFor(week)];
+
+// ---------- biegi, dystanse rosna z etapem ----------
+function runPlan(week, day) {
+  const e = etapFor(week);
+  const t = {
+    wed: {
+      restart: { txt: `Bieg ${week === 1 ? 8 : 9} km Z2, HR cap 130`, hint: "Wracamy po przerwie. Tempo bez znaczenia." },
+      baza: { txt: "Bieg 10 km Z2, HR cap 135", hint: "Czysta baza, zero jakosci." },
+      me: { txt: "Bieg 10 km z podbiegami w srodku, HR cap 145", hint: "Podbiegi w bloku ME, reszta Z2." },
+      spec: { txt: "Bieg 10-12 km, koncowka Z3", hint: "Ostatnie 3 km w tempie docelowym." },
+    },
+    thu: {
+      restart: { txt: "Bieg 5 km Z1 przed silownia", hint: "Bardzo lekko, to rozgrzewka pod nogi." },
+      baza: { txt: "Bieg 6 km Z1/Z2 przed silownia", hint: "Wegle 60-90 min przed. Nigdy na czczo w ten dzien." },
+      me: { txt: "Hill sprinty 6-8 x 10s PRZED nogami", hint: "Na swiezych nogach albo wcale. Pelna przerwa miedzy powtorzeniami." },
+      spec: { txt: "Hill sprinty 8-10 x 12s PRZED nogami", hint: "Jakosc, nie objetosc. Jesli tempo spada, konczysz." },
+    },
+    fri: {
+      restart: { txt: "Bieg 5-6 km Z1", hint: "Lekko, jutro long." },
+      baza: { txt: "Bieg 6-8 km Z1/Z2", hint: "Lekko, jutro long." },
+      me: { txt: "Bieg 8 km Z2", hint: "Bez jakosci, nogi maja byc swieze na sobote." },
+      spec: { txt: "Bieg 8 km Z2", hint: "Bez jakosci, sobota jest wazniejsza." },
+    },
+    sat: {
+      restart: { txt: `Long run ${week === 1 ? "12-14" : "14-16"} km, HR cap 130`, hint: "Odbudowa dystansu. Gora PO biegu, RPE do 6." },
+      baza: { txt: "Long run 18-22 km, HR cap 135", hint: "Najwazniejsza sesja tygodnia. Elektrolity co 45-60 min." },
+      me: { txt: "Long run 24-28 km z przewyzszeniem, HR cap 140", hint: "Cwicz fueling jak na wyscigu. Plecak z obciazeniem raz na 2 tyg." },
+      spec: { txt: "Long run 28-34 km, symulacja wyscigu", hint: "Buty, plecak i jedzenie dokladnie te, co na starcie." },
+    },
+    sun: {
+      restart: { txt: "Recovery 5-6 km Z1, HR cap 120", hint: "Mozna na czczo." },
+      baza: { txt: "Recovery 6-8 km Z1, HR cap 120", hint: "Mozna na czczo. Przed nockami: krotki sen = spacer zamiast biegu." },
+      me: { txt: "Recovery 8 km Z1, HR cap 120", hint: "To nie jest dzien na nadrabianie. Przed nockami: krotki sen = spacer." },
+      spec: { txt: "Recovery 8-10 km Z1, HR cap 120", hint: "Regeneracja, nie objetosc." },
+    },
+  };
+  return t[day][e];
+}
+
+// ---------- core, pelen zakres: sroda, piatek, niedziela ----------
+// Kolejnosc stala, zmienia sie wariant i czas.
+function buildCore(week) {
+  return pick(week, {
+    restart: [
+      { name: "CORE: Plank", sets: 3, reps: "40s", rest: "45s", bw: true },
+      { name: "CORE: Hanging knee raises", sets: 3, reps: 10, rest: "45s", bw: true },
+      { name: "CORE: Pallof press (guma)", sets: 3, reps: "12/strone", rest: "30s", bw: true },
+      { name: "CORE: Side plank", sets: 3, reps: "30s/strone", rest: "30s", bw: true },
+      { name: "CORE: Dead bug", sets: 3, reps: 12, rest: "30s", bw: true },
+    ],
+    baza: [
+      { name: "CORE: Plank", sets: 3, reps: "60s", rest: "45s", bw: true },
+      { name: "CORE: Hanging leg raises (nogi proste)", sets: 3, reps: 10, rest: "45s", bw: true },
+      { name: "CORE: Pallof press (mocniejsza guma)", sets: 3, reps: "12/strone", rest: "30s", bw: true },
+      { name: "CORE: Side plank z unoszeniem bioder", sets: 3, reps: "12/strone", rest: "30s", bw: true },
+      { name: "CORE: Hollow body hold", sets: 3, reps: "30s", rest: "30s", bw: true },
+    ],
+    me: [
+      { name: "CORE: RKC plank (pelne napiecie)", sets: 3, reps: "30s", rest: "45s", bw: true },
+      { name: "CORE: Hanging leg raises z pauza", sets: 4, reps: 10, rest: "45s", bw: true },
+      { name: "CORE: Pallof press w polprzysiadzie", sets: 3, reps: "12/strone", rest: "30s", bw: true },
+      { name: "CORE: Side plank z obciazeniem", sets: 3, reps: "30s/strone", rest: "30s" },
+      { name: "CORE: Hollow rocks", sets: 3, reps: 15, rest: "30s", bw: true },
+    ],
+    spec: [
+      { name: "CORE: Plank z plecakiem", sets: 3, reps: "60s", rest: "45s" },
+      { name: "CORE: Toes to bar", sets: 4, reps: 8, rest: "60s", bw: true },
+      { name: "CORE: Pallof press + wykrok", sets: 3, reps: "12/strone", rest: "30s", bw: true },
+      { name: "CORE: Side plank z obciazeniem", sets: 3, reps: "40s/strone", rest: "30s" },
+      { name: "CORE: Hollow rocks", sets: 4, reps: 20, rest: "30s", bw: true },
+    ],
+  });
+}
+
+// ---------- sroda: garaz push/pull ----------
+function buildGarage(week) {
+  return pick(week, {
+    restart: [
+      { name: "Podciaganie (negatywy 4s)", sets: 4, reps: "3-5", rest: "90s", bw: true },
+      { name: "Pompki, nogi wyzej", sets: 4, reps: "8-10", rest: "60s", bw: true },
+      { name: "Dipsy na poreczach", sets: 3, reps: "6-8", rest: "90s", bw: true },
+      { name: "Wioslowanie australijskie (gumy)", sets: 4, reps: 10, rest: "60s", bw: true },
+      { name: "Pike push-up (barki)", sets: 3, reps: 8, rest: "60s", bw: true },
+      { name: "Dead hang", sets: 3, reps: "30s", rest: "60s", bw: true },
+    ],
+    baza: [
+      { name: "Podciaganie (z guma / pelne)", sets: 5, reps: "5-6", rest: "90s", bw: true },
+      { name: "Pompki diamentowe", sets: 4, reps: "10-12", rest: "60s", bw: true },
+      { name: "Dipsy na poreczach", sets: 4, reps: "8-10", rest: "90s", bw: true },
+      { name: "Wioslowanie australijskie (nogi wyzej)", sets: 4, reps: 12, rest: "60s", bw: true },
+      { name: "Pike push-up", sets: 3, reps: 10, rest: "60s", bw: true },
+      { name: "Dead hang", sets: 3, reps: "45s", rest: "60s", bw: true },
+    ],
+    me: [
+      { name: "Podciaganie pelne", sets: 5, reps: "6-8", rest: "90s", bw: true },
+      { name: "Pompki archer / z plecakiem 8 kg", sets: 4, reps: "8/strone", rest: "75s" },
+      { name: "Dipsy z plecakiem", sets: 4, reps: "8-10", rest: "90s" },
+      { name: "Wioslowanie australijskie z plecakiem", sets: 4, reps: 12, rest: "60s" },
+      { name: "Pike push-up nogi na scianie", sets: 3, reps: 8, rest: "75s", bw: true },
+      { name: "Dead hang jednorecz (na zmiane)", sets: 3, reps: "20s/reka", rest: "75s", bw: true },
+    ],
+    spec: [
+      { name: "Podciaganie z obciazeniem", sets: 5, reps: 5, rest: "120s" },
+      { name: "Pompki z plecakiem 15 kg", sets: 4, reps: 10, rest: "75s" },
+      { name: "Dipsy z obciazeniem", sets: 4, reps: 8, rest: "90s" },
+      { name: "Wioslowanie australijskie z plecakiem", sets: 4, reps: 15, rest: "60s" },
+      { name: "Pike push-up / handstand przy scianie", sets: 3, reps: "8-10", rest: "75s", bw: true },
+      { name: "Dead hang jednorecz", sets: 3, reps: "25s/reka", rest: "75s", bw: true },
+    ],
+  });
+}
+
+// ---------- piatek: plecy + chwyt ----------
+function buildBackGrip(week) {
+  return pick(week, {
+    restart: [
+      { name: "Podciaganie (negatywy)", sets: 4, reps: "3-5", rest: "90s", bw: true },
+      { name: "Lat pulldown", sets: 4, reps: 10, rest: "75s" },
+      { name: "Wioslowanie sztanga", sets: 4, reps: 10, rest: "90s" },
+      { name: "Face pull (tyl barku)", sets: 3, reps: 15, rest: "45s" },
+      { name: "Dead hang", sets: 3, reps: "30s", rest: "60s", bw: true },
+      { name: "Farmer walk", sets: 3, reps: "30m", rest: "90s" },
+    ],
+    baza: [
+      { name: "Podciaganie (z guma / pelne)", sets: 4, reps: "6-8", rest: "90s", bw: true },
+      { name: "Lat pulldown", sets: 4, reps: 10, rest: "75s" },
+      { name: "Wioslowanie sztanga", sets: 4, reps: 10, rest: "90s" },
+      { name: "Face pull", sets: 3, reps: 15, rest: "45s" },
+      { name: "Dead hang / wiszenie na listwie", sets: 3, reps: "45s", rest: "60s", bw: true },
+      { name: "Farmer walk", sets: 3, reps: "40m", rest: "90s" },
+    ],
+    me: [
+      { name: "Podciaganie z obciazeniem", sets: 5, reps: 5, rest: "120s" },
+      { name: "Lat pulldown ciezki", sets: 4, reps: 8, rest: "90s" },
+      { name: "Wioslowanie sztanga", sets: 4, reps: 8, rest: "90s" },
+      { name: "Face pull", sets: 3, reps: 15, rest: "45s" },
+      { name: "Hangboard: zwis na listwie 20 mm", sets: 5, reps: "10s", rest: "90s", bw: true },
+      { name: "Farmer walk ciezki", sets: 3, reps: "40m", rest: "120s" },
+    ],
+    spec: [
+      { name: "Podciaganie z obciazeniem", sets: 5, reps: 5, rest: "120s" },
+      { name: "Lat pulldown ciezki", sets: 4, reps: 6, rest: "90s" },
+      { name: "Wioslowanie sztanga", sets: 4, reps: 6, rest: "90s" },
+      { name: "Face pull", sets: 3, reps: 15, rest: "45s" },
+      { name: "Hangboard: listwa 15 mm / jednorecz z asysta", sets: 6, reps: "10s", rest: "120s", bw: true },
+      { name: "Farmer walk ciezki", sets: 4, reps: "40m", rest: "120s" },
+    ],
+  });
+}
+
+// ---------- sobota: gora po biegu ----------
+function buildChest(week) {
+  return pick(week, {
+    restart: [
+      { name: "Wyciskanie sztangi", sets: 3, reps: 8, rest: "120s" },
+      { name: "Wyciskanie hantli skos", sets: 3, reps: 10, rest: "75s" },
+      { name: "Wyciskanie nad glowa (OHP)", sets: 3, reps: 8, rest: "90s" },
+      { name: "Dipsy / pompki na poreczach", sets: 3, reps: "max", rest: "90s", bw: true },
+      { name: "Drills po biegu: skip A/B, wysokie kolana", sets: 2, reps: "30m kazde", rest: "30s", bw: true },
+    ],
+    baza: [
+      { name: "Wyciskanie sztangi", sets: 4, reps: "6-8", rest: "120s" },
+      { name: "Wyciskanie hantli skos", sets: 3, reps: 10, rest: "75s" },
+      { name: "Wyciskanie nad glowa (OHP)", sets: 3, reps: "6-8", rest: "90s" },
+      { name: "Dipsy / pompki na poreczach", sets: 3, reps: "max", rest: "90s", bw: true },
+      { name: "Drills po biegu: skip A/B, wysokie kolana", sets: 2, reps: "30m kazde", rest: "30s", bw: true },
+    ],
+    me: [
+      { name: "Wyciskanie sztangi", sets: 4, reps: 5, rest: "120s" },
+      { name: "Wyciskanie hantli skos", sets: 3, reps: 8, rest: "75s" },
+      { name: "Wyciskanie nad glowa (OHP)", sets: 4, reps: 6, rest: "90s" },
+      { name: "Dipsy z obciazeniem", sets: 3, reps: 8, rest: "90s" },
+      { name: "Drills po biegu: skip A/B, wysokie kolana", sets: 2, reps: "30m kazde", rest: "30s", bw: true },
+    ],
+    spec: [
+      { name: "Wyciskanie sztangi (utrzymanie)", sets: 3, reps: 5, rest: "120s" },
+      { name: "Wyciskanie hantli skos", sets: 3, reps: 8, rest: "75s" },
+      { name: "Wyciskanie nad glowa (OHP)", sets: 3, reps: 6, rest: "90s" },
+      { name: "Dipsy z obciazeniem", sets: 3, reps: 8, rest: "90s" },
+      { name: "Drills po biegu: skip A/B, wysokie kolana", sets: 2, reps: "30m kazde", rest: "30s", bw: true },
+    ],
+  });
+}
+
+// Progresja stabilizacji kostki, kolana i prawego posladka. Nic nie znika,
+// zmienia sie wariant: wzorzec ruchu -> niestabilne podloze -> obciazenie -> dynamika.
+function buildStabilityWarmup(week) {
+  return pick(week, {
+    restart: [
+      { name: "Stabilizacja prawej kostki (balans + guma)", sets: 3, reps: "30s", rest: "30s", bw: true,
+        howto: "Stoj na prawej nodze, guma wokol obu stop. Kostka nie ucieka do srodka ani na zewnatrz." },
+      { name: "Glute bridge jednonoz (prawy posladek)", sets: 3, reps: 12, rest: "45s" },
+      { name: "Monster walk z guma", sets: 2, reps: "12 krokow/kierunek", rest: "30s", bw: true },
+      { name: "Clamshells (aktywacja posladka)", sets: 3, reps: "15/strone", rest: "30s", bw: true },
+    ],
+    baza: [
+      { name: "Stabilizacja kostki, niestabilne podloze", sets: 3, reps: "40s", rest: "30s", bw: true },
+      { name: "Glute bridge jednonoz", sets: 3, reps: 15, rest: "45s" },
+      { name: "Monster walk z guma", sets: 3, reps: "15 krokow/kierunek", rest: "30s", bw: true },
+      { name: "Copenhagen plank (kolano zgiete)", sets: 2, reps: "20s/strone", rest: "45s", bw: true },
+    ],
+    me: [
+      { name: "Stabilizacja kostki na poduszce", sets: 3, reps: "30s", rest: "30s", bw: true },
+      { name: "Single-leg RDL z hantla", sets: 3, reps: "10/noga", rest: "45s" },
+      { name: "Hip thrust jednonoz z obciazeniem", sets: 3, reps: 12, rest: "45s" },
+      { name: "Copenhagen plank (noga prosta)", sets: 3, reps: "25s/strone", rest: "45s", bw: true },
+    ],
+    spec: [
+      { name: "Stabilizacja kostki: poduszka + rzut pilka", sets: 3, reps: "30s", rest: "30s", bw: true },
+      { name: "Skoki jednonoz ze stabilizacja", sets: 3, reps: "8/noga", rest: "60s", bw: true },
+      { name: "Hip thrust jednonoz, pauza 2s", sets: 3, reps: 10, rest: "45s" },
+      { name: "Copenhagen plank + unoszenie", sets: 3, reps: "30s/strone", rest: "45s", bw: true },
+    ],
+  });
+}
+
+// Dzien nog. Kolejnosc stala przez caly plan, zeby historia obciazen
+// i "poprzednia sesja" dawaly sie porownac.
+function buildLegs(week) {
+  const pct = week === 1 ? "60-70%" : "75-80%";
+  return pick(week, {
+    restart: [
+      { name: `Przysiad ze sztanga (${pct} majowych)`, sets: 4, reps: 5, rest: "120s" },
+      { name: `Martwy ciag rumunski (${pct})`, sets: 3, reps: 6, rest: "120s" },
+      { name: "Step-up z plecakiem (8 kg)", sets: 4, reps: "10/noga", rest: "75s" },
+      { name: "Ekscentryczny step-down (3s w dol)", sets: 3, reps: "8/noga", rest: "60s" },
+      { name: "Nordic curl (negatywy, 3s)", sets: 3, reps: 5, rest: "90s", bw: true },
+      { name: "Wspiecia na palce", sets: 3, reps: 12, rest: "45s" },
+    ],
+    baza: [
+      { name: "Przysiad ze sztanga (80-85%)", sets: 4, reps: 5, rest: "120s" },
+      { name: "Martwy ciag rumunski (80%)", sets: 3, reps: 6, rest: "120s" },
+      { name: "Step-up z plecakiem (12-15 kg)", sets: 4, reps: "12/noga", rest: "75s" },
+      { name: "Ekscentryczny step-down (3s w dol)", sets: 3, reps: "10/noga", rest: "60s" },
+      { name: "Nordic curl (negatywy, 4s)", sets: 3, reps: 6, rest: "90s", bw: true },
+      { name: "Wspiecia na palce", sets: 3, reps: 15, rest: "45s" },
+    ],
+    me: [
+      { name: "Przysiad ze sztanga (87-92%)", sets: 4, reps: 5, rest: "120s" },
+      { name: "Martwy ciag rumunski (85%)", sets: 4, reps: 6, rest: "120s" },
+      { name: "Step-up z plecakiem (18-20 kg)", sets: 5, reps: "12/noga", rest: "75s" },
+      { name: "Ekscentryczny step-down (4s) + 5 kg", sets: 3, reps: "10/noga", rest: "60s" },
+      { name: "Nordic curl (negatywy, 5s)", sets: 3, reps: 6, rest: "90s", bw: true },
+      { name: "Wspiecia na palce z obciazeniem", sets: 4, reps: 15, rest: "45s" },
+    ],
+    spec: [
+      { name: "Przysiad ze sztanga (utrzymanie)", sets: 3, reps: 5, rest: "120s" },
+      { name: "Martwy ciag rumunski (utrzymanie)", sets: 3, reps: 6, rest: "120s" },
+      { name: "Step-up z plecakiem (20 kg, tempo)", sets: 4, reps: "15/noga", rest: "75s" },
+      { name: "Ekscentryczny step-down (4s) + 10 kg", sets: 4, reps: "10/noga", rest: "60s" },
+      { name: "Nordic curl (pelne, asysta minimalna)", sets: 3, reps: 5, rest: "90s", bw: true },
+      { name: "Wspiecia jednonoz", sets: 4, reps: 20, rest: "45s" },
+    ],
+  });
+}
+
 function buildProgram(week) {
+  const e = etapFor(week);
+  const lab = ETAP_LABEL[e];
+  const r = (day) => runPlan(week, day);
+  const stab = week <= 3 ? "etap 1 · wzorzec ruchu"
+    : week <= 6 ? "etap 2 · niestabilne podloze"
+    : week <= 12 ? "etap 3 · obciazenie zewnetrzne"
+    : "etap 4 · dynamika";
+
   return [
     {
-      key: "wed", name: "Środa", focus: "Garaż — kalistenika push/pull", type: "home",
-      warmup: "5 min skakanka/marsz + krążenia barków, band pull-aparts 2x15",
-      note: "Garaż: drążek, mata, gumy, plecak z butelkami wody. Objętość niska, jakość wysoka. Plecak: start 8-10 kg, buduj do 15-20 kg przez 6-8 tyg. Core obowiązkowy, nie do pominięcia.",
-      exercises: [
-        { name: "Podciąganie (negatywy / z gumą / pełne)", sets: 5, reps: "3-6" },
-        { name: "Pompki — ciężkie (nogi wyżej / diamentowe)", sets: 4, reps: "6-10", bw: true },
-        { name: "Wiosłowanie gumą / australijskie", sets: 4, reps: "8-12" },
-        { name: "Dead hang (chwyt pod wspinanie)", sets: 3, reps: "max czas" },
-        { name: "Dipsy na poręczach", sets: 3, reps: "max", bw: true },
-        { name: "CORE: Hanging leg raises (drążek)", sets: 3, reps: 10, bw: true },
-        { name: "CORE: Plank", sets: 3, reps: "45s", bw: true },
-        { name: "CORE: Pallof press (guma)", sets: 3, reps: "12/stronę", bw: true },
-      ],
+      key: "wed", name: "Sroda", focus: `Garaz push/pull + bieg · ${lab}`, type: "run",
+      note: `${r("wed").txt}. ${r("wed").hint} Alternatywa: sesja na scianie wspinaczkowej zamiast garazu, bieg zostaje. Core pelen zakres na koncu.`,
+      exercises: [...buildGarage(week), ...buildCore(week)],
     },
     {
-      key: "thu", name: "Czwartek", focus: "Siłownia — NOGI", type: "gym",
-      warmup: "5 min rower + mobilizacja bioder i kostek, 1 seria na pustej sztandze",
-      note: `Bieg Z1/Z2 przed lub osobno, HR pod kontrolą (patrz zasady). Nogi: ciężar pod siłę, 4-6 powtórzeń, nie 12. Objętość niska — to ma wspierać bieganie, nie je zabijać. Eksperyment: 15g żelatyny/kolagenu + wit. C (+ elektrolity jeśli chcesz), 30-60 min przed — pod prawe kolano. Zapisz w komentarzu czy coś czujesz.`,
-      exercises: [
-        { name: "Przysiad ze sztangą", sets: 4, reps: "5" },
-        { name: "Martwy ciąg rumuński", sets: 3, reps: "6" },
-        { name: "Step-up z plecakiem (najbardziej specyficzne pod podejścia)", sets: 4, reps: "10/noga" },
-        { name: "Wspięcia na palce", sets: 3, reps: 12 },
-        { name: "Stabilizacja prawej kostki (balans + guma)", sets: 3, reps: "30s / 15", bw: true },
-        { name: "Glute bridge / hip thrust — prawy pośladek", sets: 3, reps: 12 },
-        { name: "Ekscentryczny step-down (3s w dół) — pod zbiegi", sets: 3, reps: "8/noga" },
-        { name: "Nordic curl / negatywy dwugłowego", sets: 3, reps: "5", bw: true },
-        { name: "Mini-banda: clamshell + monster walk (prawy pośladek)", sets: 2, reps: "15/stronę", bw: true },
-      ],
+      key: "thu", name: "Czwartek", focus: `Bieg + nogi · ${lab}`, type: "gym",
+      warmup: buildStabilityWarmup(week),
+      stabPhase: stab,
+      note: `${r("thu").txt}. ${r("thu").hint} Prehab przed seriami, zawsze. Jesli prawy posladek nie odpala na glute bridge, reszte dnia robisz lzej. Step-up z plecakiem, nie z hantlami: obciazenie ma siedziec na plecach jak na podejsciu.`,
+      exercises: buildLegs(week),
     },
     {
-      key: "fri", name: "Piątek", focus: "Siłownia — PLECY + chwyt", type: "gym",
-      warmup: "5 min wiosłowanie + band pull-aparts 2x15",
-      note: "Główna sesja pod wspinanie i podciąganie. Bieg tylko łatwy Z1 albo wcale — jutro long.",
-      exercises: [
-        { name: "Podciąganie (progresja z garażu)", sets: 5, reps: "3-6" },
-        { name: "Wiosłowanie sztangą / hantlą", sets: 4, reps: "6-8" },
-        { name: "Lat pulldown / podciąganie z gumą", sets: 3, reps: "8-10" },
-        { name: "Farmer walk", sets: 3, reps: "40m" },
-        { name: "Dead hang / hangboard na chwytach", sets: 4, reps: "max czas" },
-        { name: "Face pull / rear delt", sets: 3, reps: 15 },
-        { name: "CORE: Hanging leg raises", sets: 3, reps: 10, bw: true },
-        { name: "CORE: Hollow body hold", sets: 3, reps: "30s", bw: true },
-        { name: "CORE: Dead bug", sets: 3, reps: 12, bw: true },
-      ],
+      key: "fri", name: "Piatek", focus: `Plecy + chwyt + bieg · ${lab}`, type: "gym",
+      note: `${r("fri").txt}. ${r("fri").hint} Zero nog, ten dzien chroni sobotni long. Core pelen zakres na koncu.`,
+      exercises: [...buildBackGrip(week), ...buildCore(week)],
     },
     {
-      key: "sat", name: "Sobota", focus: "Long run + KLATKA/GÓRA", type: "long",
-      warmup: "10 min marszobieg + dynamiczne rozciąganie nóg",
-      note: "Najważniejsza sesja tygodnia — 4. dzień od nocek, najlepiej wypoczęty. Long run Z1/Z2, HR cap wg zasad, tempo bez znaczenia. Ćwicz fueling, elektrolity co 45-60 min. Eksperyment: 15g żelatyny/kolagenu + wit. C, 30-60 min przed biegiem — pod prawe kolano, zapisz w komentarzu efekt. Siłownia PO biegu, RPE ≤6.",
-      exercises: [
-        { name: "Wyciskanie sztangi / hantli", sets: 4, reps: "5-8" },
-        { name: "Incline dumbbell press", sets: 3, reps: "8-10" },
-        { name: "Wyciskanie nad głowę (OHP)", sets: 3, reps: "6-8" },
-        { name: "Dips / pompki na poręczach", sets: 3, reps: "max", bw: true },
-        { name: "Drills techniczne po biegu: skip A/B, wysokie kolana", sets: 2, reps: "30m każde", bw: true },
-        { name: "CORE: Hollow body hold", sets: 3, reps: "30s", bw: true },
-        { name: "CORE: Side plank", sets: 3, reps: "30s/stronę", bw: true },
-        { name: "CORE: Bird dog", sets: 3, reps: "10/stronę", bw: true },
-      ],
+      key: "sat", name: "Sobota", focus: `Long run + klatka · ${lab}`, type: "long",
+      note: `${r("sat").txt}. ${r("sat").hint} Gora PO biegu, nigdy przed.`,
+      exercises: buildChest(week),
+    },
+    {
+      key: "sun", name: "Niedziela", focus: `Recovery + core · ${lab}`, type: "run",
+      note: `${r("sun").txt}. ${r("sun").hint}`,
+      exercises: buildCore(week),
     },
   ];
 }
@@ -472,9 +715,53 @@ function ProgramCard({ dayPlan, program, updateEx, toggleDone, prevSession, onCo
           <Check size={12} />{program?.done ? "zrobione" : "oznacz"}
         </button>
       </div>
-      {dayPlan.warmup && (
+      {typeof dayPlan.warmup === "string" && dayPlan.warmup && (
         <div className="text-xs mb-2 p-2" style={{ background: C.bg, color: C.paper, borderRadius: 2 }}>
           <span style={{ color: C.amber }}>Rozgrzewka: </span>{dayPlan.warmup}
+        </div>
+      )}
+      {Array.isArray(dayPlan.warmup) && dayPlan.warmup.length > 0 && (
+        <div className="mb-3">
+          <div className="text-xs uppercase tracking-widest mb-2 pb-1" style={{ color: C.amber, borderBottom: `1px solid ${C.paperDim}` }}>
+            Stabilizacja · {dayPlan.stabPhase}
+          </div>
+          <div className="space-y-2">
+            {dayPlan.warmup.map((ex, wi) => {
+              const key = "w" + wi;
+              const st = exStates[key] || { done: false, sets: "", reps: "", kg: "" };
+              return (
+                <div key={key} className="pb-1.5" style={{ borderBottom: `1px dashed ${C.paperDim}` }}>
+                  <div className="flex items-start gap-2 text-sm mb-1">
+                    <button onClick={() => updateEx(key, "done", !st.done)} className="mt-0.5 shrink-0" style={{ color: st.done ? C.teal : C.inkSoft }}>
+                      <Check size={16} />
+                    </button>
+                    <div className="flex-1 leading-snug" style={{ color: C.ink, textDecoration: st.done ? "line-through" : "none" }}>{ex.name}</div>
+                  </div>
+                  {ex.howto && <div className="text-xs pl-6 mb-1 italic" style={{ color: C.inkSoft }}>{ex.howto}</div>}
+                  <div className="flex items-center gap-3 pl-6 text-xs">
+                    <span className="font-mono shrink-0" style={{ color: C.inkSoft }}>
+                      cel {ex.sets}×{ex.reps}{ex.rest ? ` · przerwa ${ex.rest}` : ""}
+                    </span>
+                    <label className="flex items-center gap-1" style={{ color: C.inkSoft }}>
+                      ser.
+                      <input value={st.sets} onChange={(e) => updateEx(key, "sets", e.target.value)}
+                        className="w-10 text-center font-mono bg-transparent outline-none" style={{ color: C.ink, borderBottom: `1px solid ${C.line}` }} />
+                    </label>
+                    {!ex.bw && (
+                      <label className="flex items-center gap-1" style={{ color: C.inkSoft }}>
+                        kg
+                        <input value={st.kg} onChange={(e) => updateEx(key, "kg", e.target.value)}
+                          className="w-12 text-center font-mono bg-transparent outline-none" style={{ color: C.ink, borderBottom: `1px solid ${C.amber}` }} />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-xs uppercase tracking-widest mt-3 mb-1 pb-1" style={{ color: C.amber, borderBottom: `1px solid ${C.paperDim}` }}>
+            Główny trening
+          </div>
         </div>
       )}
       {dayPlan.note && (
@@ -515,7 +802,7 @@ function ProgramCard({ dayPlan, program, updateEx, toggleDone, prevSession, onCo
                 <div className="flex-1 leading-snug" style={{ color: C.ink, textDecoration: st.done ? "line-through" : "none" }}>{ex.name}</div>
               </div>
               <div className="flex items-center gap-3 pl-6 text-xs">
-                <span className="font-mono shrink-0" style={{ color: C.inkSoft }}>cel {ex.sets}×{ex.reps}</span>
+                <span className="font-mono shrink-0" style={{ color: C.inkSoft }}>cel {ex.sets}×{ex.reps}{ex.rest ? ` · przerwa ${ex.rest}` : ""}</span>
                 <label className="flex items-center gap-1" style={{ color: C.inkSoft }}>
                   ser.
                   <input value={st.sets} onChange={(e) => updateEx(idx, "sets", e.target.value)}
