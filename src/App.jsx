@@ -70,12 +70,25 @@ const PHASES = {
   1: { name: "Faza 1 · Redukcja", weeks: [1, 12], kcal: 2500, protein: 210, fat: 95, carbs: 270 },
   2: { name: "Faza 2 · Budowa", weeks: [13, 24], kcal: 3100, protein: 180, fat: 90, carbs: 400 },
 };
-const TOTAL_WEEKS = 24;
+const TOTAL_WEEKS = 999; // brak sztywnego sufitu — blok specyfiki wyścigowej trwa aż do wyścigu
 const DAY_KEY_BY_DOW = { 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
 
 function getPhaseForWeek(w) { return w <= 12 ? PHASES[1] : PHASES[2]; }
 
+// Periodyzacja: baza 6 tyg -> ME 6 tyg -> baza 6 tyg -> ME 6 tyg -> specyfika wyścigowa do wyścigu.
+// Deload co 4. tydzień, niezależnie od bloku.
+function getBlockForWeek(week) {
+  if (week == null) return null;
+  if (week <= 6) return { phase: "baza", label: "Baza Z1/Z2", cycle: 1, weekInBlock: week };
+  if (week <= 12) return { phase: "me", label: "ME", cycle: 1, weekInBlock: week - 6 };
+  if (week <= 18) return { phase: "baza", label: "Baza Z1/Z2", cycle: 2, weekInBlock: week - 12 };
+  if (week <= 24) return { phase: "me", label: "ME", cycle: 2, weekInBlock: week - 18 };
+  return { phase: "specyfika", label: "Specyfika wyścigowa", cycle: null, weekInBlock: week - 24 };
+}
+const isDeloadWeek = (week) => week != null && week % 4 === 0;
+
 function buildProgram(week) {
+  const block = getBlockForWeek(week) || { phase: "baza", label: "Baza Z1/Z2", cycle: 1, weekInBlock: week };
   return [
     {
       key: "wed", name: "Środa", focus: "Garaż — kalistenika push/pull", type: "home",
@@ -93,9 +106,17 @@ function buildProgram(week) {
       ],
     },
     {
-      key: "thu", name: "Czwartek", focus: "Siłownia — NOGI", type: "gym",
-      warmup: "5 min rower + mobilizacja bioder i kostek, 1 seria na pustej sztandze",
-      note: `Bieg Z1/Z2 przed lub osobno, HR pod kontrolą (patrz zasady). Nogi: ciężar pod siłę, 4-6 powtórzeń, nie 12. Objętość niska — to ma wspierać bieganie, nie je zabijać. Eksperyment: 15g żelatyny/kolagenu + wit. C (+ elektrolity jeśli chcesz), 30-60 min przed — pod prawe kolano. Zapisz w komentarzu czy coś czujesz.`,
+      key: "thu", name: "Czwartek",
+      focus: block.phase === "me" ? "Siłownia — NOGI + ME" : block.phase === "specyfika" ? "Siłownia — NOGI + Z3/Z4" : "Siłownia — NOGI",
+      type: "gym",
+      warmup: block.phase === "me" ? "15 min bieg z narastającą intensywnością, ostatnie 2-3 min na Z3" : "5 min rower + mobilizacja bioder i kostek, 1 seria na pustej sztandze",
+      note: (
+        block.phase === "baza"
+          ? `Blok bazy, tydz. ${block.weekInBlock}/6 (cykl ${block.cycle}). Bieg Z1/Z2 przed lub osobno, HR pod kontrolą. Zero podejść/sprintów.`
+          : block.phase === "me"
+          ? `Blok ME, tydz. ${block.weekInBlock}/6 (cykl ${block.cycle}). Schody/incline, lekki 'piekący' ból nóg, nie zadyszka. Buduj czas pod obciążeniem. Po sesji: Hill Sprinty.`
+          : `Specyfika wyścigowa, tydz. ${block.weekInBlock}. Dłuższe, ostrzejsze podejścia (Z3/Z4) bliżej wymagań wyścigu. Hill Sprinty 1x/1-2 tyg. dla podtrzymania mocy.`
+      ) + ` Nogi: ciężar pod siłę, 4-6 powtórzeń, nie 12. Objętość niska — to ma wspierać bieganie, nie je zabijać. Eksperyment: 15g żelatyny/kolagenu + wit. C (+ elektrolity jeśli chcesz), 30-60 min przed — pod prawe kolano. Zapisz w komentarzu czy coś czujesz.`,
       exercises: [
         { name: "Przysiad ze sztangą", sets: 4, reps: "5" },
         { name: "Martwy ciąg rumuński", sets: 3, reps: "6" },
@@ -106,6 +127,7 @@ function buildProgram(week) {
         { name: "Ekscentryczny step-down (3s w dół) — pod zbiegi", sets: 3, reps: "8/noga" },
         { name: "Nordic curl / negatywy dwugłowego", sets: 3, reps: "5", bw: true },
         { name: "Mini-banda: clamshell + monster walk (prawy pośladek)", sets: 2, reps: "15/stronę", bw: true },
+        ...(block.phase !== "baza" ? [{ name: "Hill Sprinty (schody/incline)", sets: 6, reps: "10s", bw: true }] : []),
       ],
     },
     {
@@ -219,6 +241,7 @@ function buildDayExportLine(dateStr, data, settings, prevBedtime) {
     `  posiłki: ${mealsStr}`,
     `  program: ${progSummary ? progSummary + (data.program?.done ? " [dzień oznaczony jako zrobiony]" : "") : "brak planu na ten dzień"}`,
     `  dodatkowe ćwiczenia: ${exStr}`,
+    `  suplementy wzięte: ${Object.entries(data.supplements || {}).filter(([, v]) => v).map(([k]) => k).join(", ") || "brak"}`,
   ].join("\n");
 }
 
@@ -228,6 +251,39 @@ function fileToBase64(file) {
     r.onload = () => res(r.result.split(",")[1]);
     r.onerror = () => rej(new Error("read failed"));
     r.readAsDataURL(file);
+  });
+}
+
+// Zdjęcia z telefonu bywają 3000-4000px — do rozpoznania posiłku wystarczy 1024px.
+// Mniejszy obraz = mniej tokenów wejściowych = niższy koszt każdego wywołania.
+function resizeImage(file, maxDim = 1024, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+        else { width = Math.round(width * (maxDim / height)); height = maxDim; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return reject(new Error("resize failed"));
+          const r = new FileReader();
+          r.onload = () => resolve({ base64: r.result.split(",")[1], mediaType: "image/jpeg" });
+          r.onerror = () => reject(new Error("read failed"));
+          r.readAsDataURL(blob);
+        },
+        "image/jpeg", quality
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image load failed")); };
+    img.src = url;
   });
 }
 
@@ -267,6 +323,7 @@ const emptyDay = () => ({
   exercises: [], program: { done: false, ex: {}, comment: "" },
   run: { km: "", timeMin: "", elevation: "" },
   bodyComp: { fat: "", muscle: "", bone: "", water: "" },
+  supplements: { ucii: false, tartCherryAM: false, vitD: false, omega3: false, creatine: false, multi: false, zinc: false, magnesium: false, tartCherryPM: false },
   amrap: { dips: "", pushups: "" },
 });
 
@@ -310,6 +367,33 @@ function StampButton({ children, onClick, active }) {
   );
 }
 function LogDivider() { return <div style={{ height: 1, background: C.line, margin: "18px 0" }} />; }
+
+function Collapsible({ title, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="p-4 mb-5" style={{ background: C.paper, borderRadius: 3 }}>
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between">
+        <span className="text-xs uppercase tracking-widest" style={{ color: C.inkSoft }}>{title}</span>
+        <span className="text-xs" style={{ color: C.inkSoft }}>{open ? "▲ zwiń" : "▼ rozwiń"}</span>
+      </button>
+      {open && <div className="mt-3">{children}</div>}
+    </div>
+  );
+}
+
+function CheckItem({ label, checked, onToggle }) {
+  return (
+    <button onClick={onToggle} className="flex items-center gap-2 w-full text-left py-1">
+      <span
+        className="flex items-center justify-center flex-shrink-0"
+        style={{ width: 18, height: 18, borderRadius: 3, border: `1px solid ${checked ? C.teal : C.line}`, background: checked ? C.teal : "transparent" }}
+      >
+        {checked && <Check size={12} color={C.paper} />}
+      </span>
+      <span className="text-xs" style={{ color: checked ? C.inkSoft : C.ink, textDecoration: checked ? "line-through" : "none" }}>{label}</span>
+    </button>
+  );
+}
 
 function ExportPanel({ label, buildText }) {
   const [open, setOpen] = useState(false);
@@ -542,6 +626,10 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
 
   const handleManualSave = () => persist(data);
 
+  const toggleSupplement = (key) => {
+    persist({ ...data, supplements: { ...(data.supplements || {}), [key]: !data.supplements?.[key] } }, { silent: true });
+  };
+
   const handleLabelMeal = () => {
     const p = Number(labelP) || 0, f = Number(labelF) || 0, c = Number(labelC) || 0;
     if (!p && !f && !c) return;
@@ -585,8 +673,8 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
     if (!file) return;
     setBusy(true); setPhotoError("");
     try {
-      const base64 = await fileToBase64(file);
-      const result = await analyzeMealPhoto(base64, file.type || "image/jpeg");
+      const { base64, mediaType } = await resizeImage(file);
+      const result = await analyzeMealPhoto(base64, mediaType);
       const meal = {
         id: Date.now(),
         time: `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`,
@@ -760,33 +848,6 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
           <MacroBar label="Węgle (g)" value={cCarbs} target={phase.carbs} color={C.inkSoft} />
         </div>
       )}
-
-      <div className="p-4 mb-5" style={{ background: C.paper, borderRadius: 3 }}>
-        <div className="text-xs uppercase tracking-widest mb-2" style={{ color: C.inkSoft }}>Co i kiedy</div>
-        <div className="text-xs space-y-1" style={{ color: C.ink }}>
-          <div><span style={{ color: C.amber }}>Rano/dzień:</span> białko + tłuszcz sycą, nie sól. Słone posiłki działają, bo są białkowe — słodkie z tym samym białkiem sycą tak samo.</div>
-          <div><span style={{ color: C.amber }}>Wieczorem:</span> jedyna pora na węglowodany — złożone (owies, ryż brązowy, kasza), nie proste. Stabilny cukier, nie budzi w nocy.</div>
-          <div><span style={{ color: C.amber }}>Wyjątek — proste:</span> pre-workout (60-90 min przed czw/sob) i zaraz po długim biegu — banan, miód, biały ryż. Szybko dostępne, szybka odbudowa glikogenu.</div>
-          <div><span style={{ color: C.amber }}>Białko:</span> ~4×35-40g co 3-4h, nie 1-2 duże porcje.</div>
-          <div><span style={{ color: C.amber }}>Dni jakościowe (czw. ME/Sprinty, sob. long):</span> trochę węgli 60-90 min przed.</div>
-        </div>
-      </div>
-
-      <div className="p-4 mb-5" style={{ background: C.paper, borderRadius: 3 }}>
-        <div className="text-xs uppercase tracking-widest mb-2" style={{ color: C.inkSoft }}>Suplementacja</div>
-        <div className="text-xs space-y-1" style={{ color: C.ink }}>
-          <div><span style={{ color: C.amber }}>Rano, na czczo:</span> UC-II (stawy), tart cherry 30ml</div>
-          <div><span style={{ color: C.amber }}>Ze śniadaniem:</span> wit. D, omega-3, kreatyna</div>
-          <div><span style={{ color: C.amber }}>W dzień:</span> multiwitamina (osobno od żelaza/cynku, min. 2h)</div>
-          <div><span style={{ color: C.amber }}>Wieczorem:</span> cynk + magnez (osobno od żelaza), tart cherry 30ml (30-60 min przed snem)</div>
-          <div style={{ color: C.inkSoft, borderTop: `1px solid ${C.paperDim}`, paddingTop: 6, marginTop: 4 }}>
-            <span style={{ color: C.rust }}>Tylko wyścigi:</span> Beet It Sport — ładowanie 4-6 dni przed (1 shot/dzień), + shot 90 min-2,5h przed startem. Nie na treningach.
-          </div>
-          <div style={{ color: C.inkSoft }}>
-            <span style={{ color: C.rust }}>Długi bieg (sobota, wyścig):</span> elektrolity w płynie co 45-60 min — sód, nie tylko woda. Twój pomiar potu: ~2,9L/3h.
-          </div>
-        </div>
-      </div>
 
       {/* meals */}
       <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
@@ -1000,14 +1061,14 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
       </div>
 
       <div className="p-3 mb-3" style={{ background: C.bg, borderRadius: 2 }}>
-        <div className="text-xs mb-1" style={{ color: C.amber }}>Zasady — 8 tyg. bazy + redukcji</div>
+        <div className="text-xs mb-1" style={{ color: C.amber }}>Zasady</div>
         <div className="text-xs space-y-1" style={{ color: C.paper }}>
-          <div>• SEN JEST LIMITEM: 6h05 przy potrzebie 8h. Adaptacja zachodzi we śnie, nie na treningu</div>
+          <div>• SEN JEST LIMITEM: adaptacja zachodzi we śnie, nie na treningu. Trzymaj HR pod 135 w blokach bazy</div>
           <div>• 4 dni treningu (śr-sob). Niedziela zdjęta — wchodzisz po niej w nocki</div>
-          <div>• 8 tyg. czystej bazy Z1/Z2, HR pod 135. Zero jakości</div>
           <div>• Siła: utrzymanie, nie budowa. Niskie powtórzenia, mała objętość</div>
           <div>• Co 4. tydzień = deload (~40-50%). Przy deficycie snu nieodpuszczalny</div>
           <div>• Śr po nockach: drzemka 90-180 min, potem światło dzienne, normalna noc</div>
+          <div>• Harmonogram tydzień po tygodniu, bloki i deloady → zakładka PLAN</div>
         </div>
       </div>
 
@@ -1036,6 +1097,49 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
       </div>
 
       <LogDivider />
+
+      <Collapsible title="Co i kiedy">
+        <div className="text-xs space-y-1" style={{ color: C.ink }}>
+          <div><span style={{ color: C.amber }}>Rano/dzień:</span> białko + tłuszcz sycą, nie sól. Słone posiłki działają, bo są białkowe — słodkie z tym samym białkiem sycą tak samo.</div>
+          <div><span style={{ color: C.amber }}>Wieczorem:</span> jedyna pora na węglowodany — złożone (owies, ryż brązowy, kasza), nie proste. Stabilny cukier, nie budzi w nocy.</div>
+          <div><span style={{ color: C.amber }}>Wyjątek — proste:</span> pre-workout (60-90 min przed czw/sob) i zaraz po długim biegu — banan, miód, biały ryż. Szybko dostępne, szybka odbudowa glikogenu.</div>
+          <div><span style={{ color: C.amber }}>Białko:</span> ~4×35-40g co 3-4h, nie 1-2 duże porcje.</div>
+          <div><span style={{ color: C.amber }}>Dni jakościowe (czw. ME/Sprinty, sob. long):</span> trochę węgli 60-90 min przed.</div>
+        </div>
+      </Collapsible>
+
+      <Collapsible title="Suplementacja">
+        <div className="space-y-3">
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.amber }}>Rano, na czczo</div>
+            <CheckItem label="UC-II (stawy)" checked={!!data.supplements?.ucii} onToggle={() => toggleSupplement("ucii")} />
+            <CheckItem label="Tart cherry 30ml" checked={!!data.supplements?.tartCherryAM} onToggle={() => toggleSupplement("tartCherryAM")} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.amber }}>Ze śniadaniem</div>
+            <CheckItem label="Witamina D" checked={!!data.supplements?.vitD} onToggle={() => toggleSupplement("vitD")} />
+            <CheckItem label="Omega-3" checked={!!data.supplements?.omega3} onToggle={() => toggleSupplement("omega3")} />
+            <CheckItem label="Kreatyna" checked={!!data.supplements?.creatine} onToggle={() => toggleSupplement("creatine")} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.amber }}>W dzień</div>
+            <CheckItem label="Multiwitamina (osobno od żelaza/cynku, min. 2h)" checked={!!data.supplements?.multi} onToggle={() => toggleSupplement("multi")} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.amber }}>Wieczorem</div>
+            <CheckItem label="Cynk (osobno od żelaza)" checked={!!data.supplements?.zinc} onToggle={() => toggleSupplement("zinc")} />
+            <CheckItem label="Magnez" checked={!!data.supplements?.magnesium} onToggle={() => toggleSupplement("magnesium")} />
+            <CheckItem label="Tart cherry 30ml (30-60 min przed snem)" checked={!!data.supplements?.tartCherryPM} onToggle={() => toggleSupplement("tartCherryPM")} />
+          </div>
+          <div className="text-xs pt-2" style={{ color: C.inkSoft, borderTop: `1px solid ${C.paperDim}` }}>
+            <span style={{ color: C.rust }}>Tylko wyścigi:</span> Beet It Sport — ładowanie 4-6 dni przed (1 shot/dzień), + shot 90 min-2,5h przed startem. Nie na treningach.
+          </div>
+          <div className="text-xs" style={{ color: C.inkSoft }}>
+            <span style={{ color: C.rust }}>Długi bieg (sobota, wyścig):</span> elektrolity w płynie co 45-60 min — sód, nie tylko woda. Twój pomiar potu: ~2,9L/3h.
+          </div>
+        </div>
+      </Collapsible>
+
       <ExportPanel label="📋 Eksportuj ten dzień" buildText={() => buildDayExportLine(date, data, settings, prevBedtime)} />
     </div>
   );
@@ -1324,6 +1428,129 @@ function WeekView({ date, settings }) {
 }
 
 // ---------- Month view ----------
+function PlanView({ settings }) {
+  if (!settings?.startDate) {
+    return (
+      <div className="text-sm p-4" style={{ color: C.paper, background: C.bgSoft, borderRadius: 2, border: `1px dashed ${C.line}` }}>
+        Ustaw datę startu programu w zakładce DZIEŃ ("zmień start"), żeby zobaczyć pełny plan tydzień po tygodniu.
+      </div>
+    );
+  }
+  const start = settings.startDate;
+  const today = fmtDate(new Date());
+  const todayWeek = computeWeek(today, start);
+
+  const weekStartDate = (w) => addDays(start, (w - 1) * 7);
+  const weekEndDate = (w) => addDays(start, w * 7 - 1);
+
+  const cycles = [
+    { key: "b1", phase: "baza", label: "Baza Z1/Z2", cycle: 1, weekStart: 1, weekEnd: 6 },
+    { key: "me1", phase: "me", label: "ME", cycle: 1, weekStart: 7, weekEnd: 12 },
+    { key: "b2", phase: "baza", label: "Baza Z1/Z2", cycle: 2, weekStart: 13, weekEnd: 18 },
+    { key: "me2", phase: "me", label: "ME", cycle: 2, weekStart: 19, weekEnd: 24 },
+  ];
+
+  const specStartWeek = 25;
+  const specStartDate = weekStartDate(specStartWeek);
+  const upcomingRaces = RACES.filter((r) => parseDate(r.date) >= parseDate(specStartDate));
+  const race1 = upcomingRaces[0] || null;
+  const laterRaces = upcomingRaces.slice(1);
+
+  const PHASE_COLOR = { baza: C.teal, me: C.amber, specyfika: C.rust };
+
+  const BlockCard = ({ label, sub, dateRange, isCurrent, color, deloadWeeks, children }) => (
+    <div className="p-4 mb-3" style={{
+      background: isCurrent ? C.paper : C.bgSoft,
+      borderRadius: 3,
+      border: isCurrent ? `2px solid ${color}` : `1px solid ${C.line}`,
+    }}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-sm font-semibold" style={{ color: isCurrent ? C.ink : C.paper }}>{label}</div>
+        {isCurrent && <span className="text-xs px-2 py-0.5" style={{ background: color, color: C.ink, borderRadius: 2 }}>teraz</span>}
+      </div>
+      {sub && <div className="text-xs mb-1" style={{ color: isCurrent ? C.inkSoft : C.inkSoft }}>{sub}</div>}
+      <div className="text-xs font-mono" style={{ color: isCurrent ? C.inkSoft : C.inkSoft }}>{dateRange}</div>
+      {deloadWeeks && deloadWeeks.length > 0 && (
+        <div className="text-xs mt-1" style={{ color: color }}>
+          Deload: {deloadWeeks.map((w) => `tydz. ${w}`).join(", ")}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="text-center mb-5">
+        <div className="text-xs uppercase tracking-widest" style={{ color: C.amber, fontFamily: "ui-monospace, monospace" }}>Plan strategiczny</div>
+        <div className="text-lg font-serif" style={{ color: C.paper }}>
+          {todayWeek ? `Tydzień ${todayWeek}` : "Program się jeszcze nie zaczął"}
+        </div>
+      </div>
+
+      {cycles.map((c) => {
+        const isCurrent = todayWeek != null && todayWeek >= c.weekStart && todayWeek <= c.weekEnd;
+        const deloads = [];
+        for (let w = c.weekStart; w <= c.weekEnd; w++) if (isDeloadWeek(w)) deloads.push(w);
+        return (
+          <BlockCard
+            key={c.key}
+            label={`${c.label} — cykl ${c.cycle}`}
+            sub={`Tydz. ${c.weekStart}-${c.weekEnd}`}
+            dateRange={`${weekStartDate(c.weekStart)} → ${weekEndDate(c.weekEnd)}`}
+            isCurrent={isCurrent}
+            color={PHASE_COLOR[c.phase]}
+            deloadWeeks={deloads}
+          />
+        );
+      })}
+
+      {(() => {
+        const isCurrent = todayWeek != null && todayWeek >= specStartWeek && (!race1 || parseDate(today) <= parseDate(race1.date));
+        const deloads = [];
+        const specEndWeek = race1 ? computeWeek(race1.date, start) : specStartWeek + 11;
+        for (let w = specStartWeek; w <= (specEndWeek || specStartWeek + 11); w++) if (isDeloadWeek(w)) deloads.push(w);
+        return (
+          <BlockCard
+            label="Specyfika wyścigowa"
+            sub={race1 ? `Do: ${race1.label}` : "Budowa pod pierwszy wyścig"}
+            dateRange={`${specStartDate} → ${race1 ? race1.date : "?"}`}
+            isCurrent={isCurrent}
+            color={PHASE_COLOR.specyfika}
+            deloadWeeks={deloads}
+          />
+        );
+      })()}
+
+      {race1 && (
+        <BlockCard
+          label={`🏁 ${race1.label}`}
+          dateRange={race1.date}
+          isCurrent={today === race1.date}
+          color={C.rust}
+        />
+      )}
+
+      {laterRaces.map((r) => (
+        <BlockCard
+          key={r.date}
+          label={`🏁 ${r.label}`}
+          sub="Blok specyficzny: rozpiszemy bliżej terminu"
+          dateRange={r.date}
+          isCurrent={today === r.date}
+          color={C.rust}
+        />
+      ))}
+
+      <div className="p-3 mt-2" style={{ background: C.bg, borderRadius: 2 }}>
+        <div className="text-xs" style={{ color: C.inkSoft }}>
+          Odległe bloki (po pierwszym wyścigu) celowo nie są rozpisane szczegółowo — plan konkretyzuje się ~6-8 tyg. przed każdym wydarzeniem, żeby nie planować na sztywno czegoś co i tak się zmieni.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MonthView({ monthStr, setMonthStr, settings }) {
   const [days, setDays] = useState(null);
 
@@ -1525,6 +1752,7 @@ export default function CalorieLogbook() {
           <StampButton active={view === "day"} onClick={() => setView("day")}>DZIEŃ</StampButton>
           <StampButton active={view === "week"} onClick={() => { setView("week"); setRefreshKey((k) => k + 1); }}>TYDZIEŃ</StampButton>
           <StampButton active={view === "month"} onClick={() => { setView("month"); setRefreshKey((k) => k + 1); }}>MIESIĄC</StampButton>
+          <StampButton active={view === "plan"} onClick={() => setView("plan")}>PLAN</StampButton>
         </div>
 
         {view === "day" && !loading && (
@@ -1534,9 +1762,10 @@ export default function CalorieLogbook() {
         {view === "day" && loading && <div style={{ color: C.paper }} className="text-sm text-center">Wczytywanie…</div>}
         {view === "week" && <WeekView date={date} settings={settings} key={refreshKey} />}
         {view === "month" && <MonthView monthStr={monthStr} setMonthStr={setMonthStr} settings={settings} key={"m" + refreshKey} />}
+        {view === "plan" && <PlanView settings={settings} />}
 
         <div className="text-center mt-8 text-xs" style={{ color: C.inkSoft, fontFamily: "ui-monospace, monospace" }}>
-          Faza 1 · cel 500 kcal deficytu / dzień · Program Silnik 24 tyg.
+          Program Silnik · zakładka PLAN pokazuje pełny harmonogram
         </div>
       </div>
     </div>

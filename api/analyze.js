@@ -55,8 +55,10 @@ Bez wstępów typu "oto ocena". Zacznij od werdyktu. Nie używaj myślników em 
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: type === "review" ? 700 : 1000,
+        // Haiku 4.5: $1/$5 za milion tokenów, 3x taniej niż Sonnet 4.6 ($3/$15).
+        // Ocena tygodnia zostaje na Sonnecie — to jedno wywołanie/tydzień, warto tu jakości.
+        model: type === "review" ? "claude-sonnet-4-6" : "claude-haiku-4-5-20251001",
+        max_tokens: type === "review" ? 700 : 400,
         messages: [{ role: "user", content }],
       }),
     });
