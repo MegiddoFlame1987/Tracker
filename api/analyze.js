@@ -37,26 +37,47 @@ export default async function handler(req, res) {
     let garminBlock = "brak danych z zegarka";
     if (Array.isArray(garmin) && garmin.length) {
       garminBlock = garmin
-        .map((w) => `${w.date}: HRV ${w.hrv ?? "—"}, tętno spoczynkowe ${w.restingHr ?? "—"}, sen ${w.sleepHours ?? "—"}h (score ${w.sleepScore ?? "—"}), gotowość ${w.readiness ?? "—"}, body battery ${w.bodyBattery ?? "—"}`)
+        .map((w) => `${w.date}: HRV ${w.hrv ?? "—"}, tętno spoczynkowe ${w.restingHr ?? "—"}, sen ${w.sleepHours ?? "—"}h (score ${w.sleepScore ?? "—"}), gotowość ${w.readiness ?? "—"}, VO2max ${w.vo2max ?? "—"}, CTL ${w.ctl ?? "—"}, ATL ${w.atl ?? "—"}, ramp ${w.rampRate ?? "—"}`)
         .join("\n");
     }
-    content = `Jesteś doświadczonym trenerem biegów górskich i ultra. Twój zawodnik: 193cm, ~97kg, wraca po 3-tygodniowej przerwie, jest w 8-tygodniowym bloku czystej bazy Z1/Z2 + redukcji wagi. Cele: ultra 100km (maj 2027), Mont Blanc (lipiec 2027), Snowdonia 80km (wrzesień 2027), wspinanie 6a-c i lodowe. Pracuje na nocki (nd 18:00 - śr 06:00), trenuje śr-nd. Znane problemy: prawa noga krótsza o 2,5cm, ból nad prawym kolanem i prawy pośladek, tętno obecnie wysokie przy łatwym wysiłku (oczekuje na wyniki krwi).
+    content = `Jesteś doświadczonym trenerem biegów górskich i ultra. Oceniasz tydzień swojego zawodnika.
 
-DANE BIEŻĄCEGO TYGODNIA:
+ZAWODNIK
+193 cm, ~97 kg, cel wagowy 89-90 kg. Bardzo wysoka baza tlenowa. Za sobą ukończone 109 km.
+Przerwa lipiec-sierpień 2026 spowodowała spadek formy około 20%. Wraca ostrożnie.
+Praca na nocki: niedziela 18:00 do środy 06:00, trzy noce z rzędu. Trenuje środa-sobota, cztery dni.
+Znane problemy: prawa noga krótsza o 2,5 cm, ból nad prawym kolanem, słaby prawy pośladek, słaba prawa kostka.
+Cele: 100 km ultra 15.05.2027, Mont Blanc 07.07.2027, Snowdonia 80 km 04.09.2027. Wspinanie z 5c na 6a-c.
+
+ZASADY, KTÓRE OBOWIĄZUJĄ (egzekwuj je, nie powtarzaj)
+1. Sen jest warunkiem wstępnym, nie dodatkiem. Objętość ma się zmieścić w dostępnym śnie. Historycznie spał 6h05 przy potrzebie 8h i to był główny limiter, nie dieta i nie trening.
+2. W bloku bazy: HR pod 135, zero jakości. Jeśli dane ze stref pokazują czas w Z3+, to jest złamanie zasady.
+3. Deload co 4. tydzień: objętość w dół o 40-50%. Deload to inwestycja, nie strata.
+4. Blok ME wymaga 4 tygodni bazy przed sobą. Raz został włączony po przerwie i trzeba było go cofnąć.
+5. Kolizja sobotnia: ciężkie dźwiganie i długi bieg Z2 nie stoją obok siebie. Góra idzie PO biegu, nigdy przed.
+6. Siłownia wspiera bieganie, nigdy odwrotnie. Długi bieg jest ważniejszy od każdej innej sesji.
+7. Ciągłość ponad perfekcję. Trenuj pod ostatnie 40 km wyścigu, nie pod pierwsze 20.
+
+BIEŻĄCY TYDZIEŃ
 ${current}
 
-DANE Z GARMINA (obiektywne, przez intervals.icu — ważniejsze niż wpisy ręczne):
+DANE Z ZEGARKA, DZIEŃ PO DNIU
 ${garminBlock}
 
-POPRZEDNIE TYGODNIE (od najnowszego):
+HISTORIA
 ${history || "brak danych historycznych"}
 
-Napisz zwięzłą ocenę tygodnia po polsku, maksymalnie 200 słów. Struktura:
-1. Jedno zdanie werdyktu.
-2. Co poszło dobrze (konkretne liczby).
-3. Co wymaga uwagi — bądź szczery, nie łagodź. Jeśli widzisz ryzyko przetrenowania, niedoboru snu, zbyt małego deficytu albo zbyt wysokiego tętna, powiedz to wprost.
-4. Jedna konkretna rzecz do zmiany w przyszłym tygodniu.
-Bez wstępów typu "oto ocena". Zacznij od werdyktu. Nie używaj myślników em (—), pisz krótkimi zdaniami.`;
+ZADANIE
+Napisz ocenę po polsku, maksymalnie 250 słów, w tej strukturze:
+
+1. WERDYKT. Jedno zdanie.
+2. WYKONANIE VS PLAN. Czy tydzień zgadza się z blokiem periodyzacji i jego zasadą? Jeśli to deload, czy objętość faktycznie spadła? Jeśli to baza, czy HR i strefy się trzymają?
+3. TREND. Porównaj z poprzednim tygodniem konkretnymi liczbami: HRV, tętno spoczynkowe, sen, CTL, kilometry. Powiedz co rośnie, co spada i czy to jest to, co powinno.
+4. RYZYKO. Bądź szczery, nie łagodź. Reaguj na: HRV spadające przez kilka dni, tętno spoczynkowe w górę, rampRate powyżej 8 na tydzień, sen poniżej 7h, deficyt kaloryczny przy rosnącej objętości, czas w Z3+ w bloku bazy, ból prawej strony w komentarzach. Jeśli danych brakuje, powiedz czego brakuje, nie zmyślaj.
+5. JEDNA ZMIANA na przyszły tydzień. Konkretna, wykonalna, nie lista.
+
+Dane z zegarka są ważniejsze niż wpisy ręczne. Jeśli obie liczby są w komplecie i się różnią, wierz zegarkowi i powiedz o rozbieżności.
+Bez wstępów. Zacznij od werdyktu. Krótkie zdania. Nie używaj myślników em.`;
   } else {
     return res.status(400).json({ error: "Nieznany typ żądania" });
   }
@@ -71,7 +92,7 @@ Bez wstępów typu "oto ocena". Zacznij od werdyktu. Nie używaj myślników em 
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: type === "review" ? 700 : 1000,
+        max_tokens: type === "review" ? 1000 : 1000,
         messages: [{ role: "user", content }],
       }),
     });

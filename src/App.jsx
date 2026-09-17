@@ -304,7 +304,7 @@ async function fetchWeekReview(current, history, garmin) {
 const emptyDay = () => ({
   meals: [], burned: "", sleepTime: "", wakeTime: "", weight: "",
   exercises: [], program: { done: false, ex: {}, comment: "" },
-  run: { km: "", timeMin: "", elevation: "", avgHr: "", kcal: "" },
+  run: { km: "", timeMin: "", elevation: "", avgHr: "", kcal: "", hrZoneMin: null, load: null, type: "" },
   garmin: null, // migawka wellness z intervals.icu: hrv, sen, RHR, gotowość
   bodyComp: { fat: "", muscle: "", bone: "", water: "" },
   amrap: { dips: "", pushups: "" },
@@ -580,6 +580,9 @@ function GarminPanel({ date, data, persist }) {
           elevation: act.elevation != null ? String(act.elevation) : (data.run?.elevation || ""),
           avgHr: act.avgHr != null ? String(act.avgHr) : (data.run?.avgHr || ""),
           kcal: act.kcal != null ? String(act.kcal) : (data.run?.kcal || ""),
+          hrZoneMin: act.hrZoneMin || (data.run?.hrZoneMin || null),
+          load: act.load ?? (data.run?.load ?? null),
+          type: act.type || (data.run?.type || ""),
         };
         // spalone uzupełniamy tylko gdy pole puste — ręczny wpis ma pierwszeństwo
         if (!next.burned && act.kcal) next.burned = String(act.kcal);
@@ -612,11 +615,15 @@ function GarminPanel({ date, data, persist }) {
       {state === "error" && <div className="text-xs mb-2" style={{ color: C.rust }}>{msg}</div>}
       {state === "ok" && <div className="text-xs mb-2" style={{ color: C.teal }}>Pobrano: {msg}</div>}
       {g && (
-        <div className="text-xs mb-3 pb-2 grid grid-cols-4 gap-2 font-mono" style={{ color: C.ink, borderBottom: `1px solid ${C.paperDim}` }}>
+        <div className="text-xs mb-3 pb-2 grid grid-cols-4 gap-y-1 gap-x-2 font-mono" style={{ color: C.ink, borderBottom: `1px solid ${C.paperDim}` }}>
           <div><span style={{ color: C.inkSoft }}>HRV </span>{g.hrv ?? "—"}</div>
           <div><span style={{ color: C.inkSoft }}>RHR </span>{g.restingHr ?? "—"}</div>
           <div><span style={{ color: C.inkSoft }}>sen </span>{g.sleepHours != null ? `${g.sleepHours}h` : "—"}</div>
           <div><span style={{ color: C.inkSoft }}>gotow. </span>{g.readiness ?? g.bodyBattery ?? "—"}</div>
+          <div><span style={{ color: C.inkSoft }}>VO2 </span>{g.vo2max ?? "—"}</div>
+          <div><span style={{ color: C.inkSoft }}>forma </span>{g.ctl ?? "—"}</div>
+          <div><span style={{ color: C.inkSoft }}>zmęcz. </span>{g.atl ?? "—"}</div>
+          <div><span style={{ color: C.inkSoft }}>ramp </span>{g.rampRate ?? "—"}</div>
         </div>
       )}
     </>
@@ -1153,28 +1160,130 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
     </div>
   );
 }
+// ---------- kontekst planu: blok periodyzacji, deload, wyścig ----------
+// Baza 6 tyg -> ME 6 -> Baza 6 -> ME 6, deload co 4. tydzień przez cały plan.
+function blockForWeek(w) {
+  if (!w) return { name: "poza planem", weekInBlock: null, rule: "" };
+  const idx = Math.floor((w - 1) / 6);
+  const weekInBlock = ((w - 1) % 6) + 1;
+  const defs = [
+    { name: "Baza 1", rule: "Czysta Z1/Z2, HR pod 135, zero jakości. Objętość rośnie, intensywność nie." },
+    { name: "ME 1", rule: "Muscular Endurance: schody/podbiegi, ciężar w plecaku. Wymaga 4 tyg. bazy za sobą." },
+    { name: "Baza 2", rule: "Powrót do Z1/Z2, konsolidacja po ME. HR pod kontrolą." },
+    { name: "ME 2", rule: "Drugi blok ME, wyżej objętość. W środku wyjazd lodowy (Słowacja, luty)." },
+  ];
+  const d = defs[Math.min(idx, defs.length - 1)];
+  return { ...d, weekInBlock };
+}
+
+function planContextText(monday, weekNum) {
+  const b = blockForWeek(weekNum);
+  const isDeload = weekNum != null && weekNum % 4 === 0;
+  const race = nextRaceInfo(monday);
+  return [
+    `Tydzień ${weekNum ?? "—"}/${TOTAL_WEEKS} planu, blok ${b.name} (tydz. ${b.weekInBlock ?? "—"}/6)`,
+    `Zasada bloku: ${b.rule}`,
+    `Status: ${isDeload ? "DELOAD — objętość ma spaść o 40-50%, to część planu" : "tydzień roboczy"}`,
+    race ? `Następny cel: ${race.label}, za ${race.diff} dni` : "",
+    `Struktura tygodnia: śr garaż push/pull + bieg, czw nogi + prehab prawej strony + wspinanie, pt plecy/chwyt (zero nóg), sob long run + lekka góra po biegu`,
+  ].filter(Boolean).join("\n");
+}
+
+// ---------- agregaty z Garmina dla tygodnia ----------
+function garminWeekAgg(days) {
+  const w = days.map((d) => d.data?.garmin).filter(Boolean);
+  const avg = (key) => {
+    const v = w.map((x) => x?.[key]).filter((x) => x != null);
+    return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : null;
+  };
+  const last = (key) => {
+    for (let i = w.length - 1; i >= 0; i--) if (w[i]?.[key] != null) return w[i][key];
+    return null;
+  };
+  const first = (key) => {
+    for (let i = 0; i < w.length; i++) if (w[i]?.[key] != null) return w[i][key];
+    return null;
+  };
+  // minuty w strefach z wszystkich biegów tygodnia
+  const zones = [0, 0, 0, 0, 0, 0, 0];
+  let hasZones = false;
+  days.forEach((d) => {
+    const z = d.data?.run?.hrZoneMin;
+    if (Array.isArray(z)) { hasZones = true; z.forEach((m, i) => { zones[i] = (zones[i] || 0) + (Number(m) || 0); }); }
+  });
+  const easy = zones[0] + zones[1];
+  const hard = zones.slice(2).reduce((a, b) => a + b, 0);
+  return {
+    count: w.length,
+    hrv: avg("hrv"), restingHr: avg("restingHr"), sleep: avg("sleepHours"),
+    sleepScore: avg("sleepScore"), avgSleepingHr: avg("avgSleepingHr"),
+    vo2max: last("vo2max"),
+    ctlStart: first("ctl"), ctlEnd: last("ctl"), atlEnd: last("atl"), rampRate: last("rampRate"),
+    steps: avg("steps"),
+    zones: hasZones ? { easy: Math.round(easy), hard: Math.round(hard), pct: easy + hard ? Math.round((easy / (easy + hard)) * 100) : null } : null,
+  };
+}
+
+function garminAggText(g) {
+  if (!g || !g.count) return "brak danych z zegarka w tym tygodniu";
+  const l = [
+    `HRV śr. ${g.hrv ?? "—"} | tętno spoczynkowe śr. ${g.restingHr ?? "—"} | tętno podczas snu śr. ${g.avgSleepingHr ?? "—"}`,
+    `Sen śr. ${g.sleep ?? "—"} h (score ${g.sleepScore ?? "—"}), dni z danymi: ${g.count}/7`,
+    `VO2max: ${g.vo2max ?? "—"}`,
+    `Forma CTL ${g.ctlStart ?? "—"} -> ${g.ctlEnd ?? "—"} | zmęczenie ATL ${g.atlEnd ?? "—"} | rampRate ${g.rampRate ?? "—"}`,
+    `Kroki śr./dzień: ${g.steps ?? "—"} (obciążenie z pracy, nie z treningu)`,
+  ];
+  if (g.zones) l.push(`Strefy HR w bieganiu: ${g.zones.easy} min Z1-Z2, ${g.zones.hard} min Z3+, czyli ${g.zones.pct ?? "—"}% łatwo`);
+  return l.join("\n");
+}
+
 function buildWeekSummaryText(monday, days, rows, agg) {
+  const g = garminWeekAgg(days);
   const lines = [
-    `Tydzień od ${monday}`,
+    "=== PLAN ===",
+    planContextText(monday, agg.weekNum),
+    "",
+    "=== TYDZIEŃ " + monday + " — WYKONANIE ===",
     `Bieganie: ${agg.totalKm} km, ${agg.totalElev} m przewyższenia, śr. tempo ${agg.avgPaceWeek || "—"}/km`,
-    `Bilans kaloryczny tygodnia: ${agg.totalNet} kcal (cel deficytu 3500)`,
-    `Średni sen: ${agg.avgSleep ?? "—"} h | średnie białko: ${agg.avgProtein} g`,
-    `Waga (ostatni wpis): ${agg.lastWeight || "—"} kg`,
     `Treningi zaliczone: ${agg.doneCount}/${agg.trainDays}`,
-    `Obciążenia: ${agg.weekLifts.map((l) => `${l.label} ${l.kg ? l.kg + "kg" : "—"}`).join(", ")}`,
-    "Dzień po dniu:",
+    `Obciążenia kluczowe: ${agg.weekLifts.map((l) => `${l.label} ${l.kg ? l.kg + "kg" : "—"}`).join(", ")}`,
+    `Bilans kaloryczny: ${agg.totalNet} kcal (cel tygodnia ${TARGET_DEFICIT * 7})`,
+    `Sen wpisany ręcznie śr. ${agg.avgSleep ?? "—"} h | białko śr. ${agg.avgProtein} g (cel 180)`,
+    `Waga ostatni wpis: ${agg.lastWeight || "—"} kg`,
+    "",
+    "=== ZEGAREK (obiektywne, ważniejsze od wpisów ręcznych) ===",
+    garminAggText(g),
+    "",
+    "=== DZIEŃ PO DNIU ===",
   ];
   rows.forEach((r) => {
     const d = days.find((x) => x.date === r.date);
+    const w = d?.data?.garmin || null;
     const comment = d?.data?.program?.comment;
+    const run = r.runKm
+      ? `${r.runKm}km${r.runElev ? " +" + r.runElev + "m" : ""}${d?.data?.run?.avgHr ? ", śr. HR " + d.data.run.avgHr : ""}`
+      : "bez biegu";
+    const wellness = w
+      ? `HRV ${w.hrv ?? "—"}, RHR ${w.restingHr ?? "—"}, sen ${w.sleepHours ?? "—"}h`
+      : "brak danych z zegarka";
     lines.push(
-      `  ${shortLabel(r.date)}: ${r.runKm ? r.runKm + "km" : "bez biegu"}${r.runElev ? " +" + r.runElev + "m" : ""}, ` +
-      `spożyte ${r.consumed}kcal, spalone ${r.burned || "—"}, sen ${r.hrs ?? "—"}h, ` +
+      `  ${shortLabel(r.date)}: ${run} | ${wellness} | spożyte ${r.consumed}kcal, spalone ${r.burned || "—"} | ` +
       `${r.isTrainDay ? (r.progDone ? "trening zrobiony" : "trening NIEzrobiony") : "wolne"}` +
       (comment ? ` | komentarz: ${comment}` : "")
     );
   });
   return lines.join("\n");
+}
+
+// pełny blok poprzedniego tygodnia — do porównania, nie jednolinijkowiec
+function buildPrevWeekText(monday, days, agg) {
+  const g = garminWeekAgg(days);
+  return [
+    `=== POPRZEDNI TYDZIEŃ (${monday}) ===`,
+    `Bieganie: ${agg.totalKm} km, ${agg.totalElev} m+, treningi ${agg.doneCount}/${agg.trainDays}`,
+    `Bilans ${agg.totalNet} kcal, waga ${agg.lastWeight || "—"} kg`,
+    garminAggText(g),
+  ].join("\n");
 }
 
 function WeekView({ date, settings }) {
@@ -1376,30 +1485,36 @@ function WeekView({ date, settings }) {
               try {
                 const cur = buildWeekSummaryText(monday, days, rows, {
                   totalNet, avgSleep, avgProtein, doneCount, trainDays: trainDays.length,
-                  lastWeight, totalKm, totalElev, avgPaceWeek, weekLifts,
+                  lastWeight, totalKm, totalElev, avgPaceWeek, weekLifts, weekNum,
                 });
-                // zbierz 3 poprzednie tygodnie
+                // poprzedni tydzień w pełnej formie, dwa wcześniejsze skrótowo
                 const hist = [];
                 for (let w = 1; w <= 3; w++) {
                   const m = addDays(monday, -7 * w);
                   const ds = await Promise.all(
                     Array.from({ length: 7 }, (_, i) => loadDay(addDays(m, i)))
                   );
+                  const wrapped = ds.map((data, i) => ({ date: addDays(m, i), data }));
                   const km = ds.reduce((a, d) => a + (Number(d.run?.km) || 0), 0);
                   const elev = ds.reduce((a, d) => a + (Number(d.run?.elevation) || 0), 0);
                   const kcal = ds.reduce((a, d) => a + d.meals.reduce((x, m2) => x + (Number(m2.kcal) || 0), 0), 0);
                   const burn = ds.reduce((a, d) => a + (Number(d.burned) || 0), 0);
                   const wts = ds.map((d) => d.weight).filter(Boolean);
                   const done = ds.filter((d) => d.program?.done).length;
-                  if (km || kcal || wts.length || done) {
+                  if (!(km || kcal || wts.length || done)) continue;
+                  if (w === 1) {
+                    hist.push(buildPrevWeekText(m, wrapped, {
+                      totalKm: Math.round(km * 10) / 10,
+                      totalElev: Math.round(elev),
+                      doneCount: done,
+                      trainDays: 4,
+                      totalNet: burn - kcal,
+                      lastWeight: wts[wts.length - 1] || null,
+                    }));
+                  } else {
                     hist.push(`Tydzień od ${m}: ${Math.round(km * 10) / 10} km, ${Math.round(elev)} m+, bilans ${burn - kcal} kcal, waga ${wts[wts.length - 1] || "—"} kg, treningi ${done}/4`);
                   }
                 }
-                // wellness z Garmina (intervals.icu) — trener ocenia realny HRV i sen,
-                // nie tylko to, co wpisane ręcznie
-                const garminWeek = days
-                  .map(({ date: d, data }) => (data.garmin ? { ...data.garmin, date: d } : null))
-                  .filter(Boolean);
                 const res = await fetchWeekReview(cur, hist.join("\n"), garminWeek.length ? garminWeek : null);
                 setReview(res.text);
                 await window.storage.set(`review:${monday}`, JSON.stringify({ text: res.text }), false);

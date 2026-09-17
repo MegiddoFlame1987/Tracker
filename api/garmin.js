@@ -89,6 +89,12 @@ export default async function handler(req, res) {
         maxHr: num(a.max_heartrate, 0),
         kcal: num(a.calories, 0),
         load: num(a.icu_training_load, 0),
+        intensity: num(a.icu_intensity, 0),
+        rpe: num(a.icu_rpe, 0),
+        // minuty w strefach HR — weryfikacja zasady "HR pod 135, zero jakości"
+        hrZoneMin: Array.isArray(a.icu_hr_zone_times)
+          ? a.icu_hr_zone_times.map((sec) => num((sec || 0) / 60, 0))
+          : null,
         paceMinPerKm: km && timeMin ? num(timeMin / km, 2) : null,
       };
     });
@@ -99,14 +105,46 @@ export default async function handler(req, res) {
       restingHr: num(w.restingHR, 0),
       sleepHours: w.sleepSecs != null ? num(w.sleepSecs / 3600, 2) : null,
       sleepScore: num(w.sleepScore, 0),
-      readiness: num(w.readiness, 0),
-      bodyBattery: num(w.bodyBattery ?? w.body_battery, 0),
+      sleepQuality: num(w.sleepQuality, 0),
+      avgSleepingHr: num(w.avgSleepingHR, 0),
+      hrvSDNN: num(w.hrvSDNN, 0),
+      vo2max: num(w.vo2max, 1),
+      spO2: num(w.spO2, 0),
+      // ctl = forma, atl = zmęczenie, rampRate = tempo narastania obciążenia
+      ctl: num(w.ctl, 1),
+      atl: num(w.atl, 1),
+      rampRate: num(w.rampRate, 2),
       weight: num(w.weight, 1),
       bodyFat: num(w.bodyFat, 1),
       steps: num(w.steps, 0),
-      ctl: num(w.ctl, 1),
-      atl: num(w.atl, 1),
+      // subiektywne, wpisywane ręcznie na intervals.icu — zwykle puste
+      fatigue: num(w.fatigue, 0),
+      soreness: num(w.soreness, 0),
+      stress: num(w.stress, 0),
+      // niepewne: zależy czy Garmin je przepuszcza. null = brak
+      readiness: num(w.readiness, 0),
+      bodyBattery: num(w.bodyBattery ?? w.body_battery, 0),
     }));
+
+    // ?raw=1 — surowe nazwy pól, żeby zobaczyć co Garmin faktycznie przepuszcza
+    if (req.query.raw) {
+      const keysOf = (arr) => {
+        const set = new Set();
+        (Array.isArray(arr) ? arr : []).forEach((o) => Object.entries(o || {}).forEach(([k, v]) => {
+          if (v !== null && v !== undefined && v !== "") set.add(k);
+        }));
+        return [...set].sort();
+      };
+      return res.status(200).json({
+        range: { oldest, newest },
+        wellnessCount: (rawWellness || []).length,
+        activityCount: (rawActivities || []).length,
+        wellnessFieldsWithData: keysOf(rawWellness),
+        activityFieldsWithData: keysOf(rawActivities),
+        sampleWellness: (rawWellness || [])[0] || null,
+        sampleActivity: (rawActivities || [])[0] || null,
+      });
+    }
 
     // najnowsze pierwsze — apka zwykle pyta o dziś
     activities.sort((a, b) => String(b.date).localeCompare(String(a.date)));
