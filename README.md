@@ -1,68 +1,68 @@
-# Dziennik Kalorii — wersja samodzielna
+# Tracker
 
-Ta wersja działa niezależnie od Claude — hostowana na Vercel, dane w
-przeglądarce (localStorage), rozpoznawanie zdjęć przez własną funkcję
-serwerową (Twój klucz API, nigdy nie widoczny w przeglądarce).
+Dziennik jedzenia i treningu. PWA (Vite + React), dane w przeglądarce
+(localStorage), funkcje serwerowe na Vercel. Klucze API nigdy nie trafiają
+do przeglądarki.
 
-## Czego potrzebujesz
+## Co jest w środku
 
-- Konto na [vercel.com](https://vercel.com) (darmowe, logowanie przez GitHub)
-- Konto na [github.com](https://github.com) (darmowe)
-- Klucz API Anthropic z [console.anthropic.com](https://console.anthropic.com)
-  (zakładka "API Keys") — płacisz tylko za realne użycie, kilka $ na
-  rozpoznawanie posiłków starczy na długo
+| Element | Plik | Rola |
+|---|---|---|
+| Aplikacja | `src/App.jsx` | cały UI, plan treningowy, dziennik, wykresy |
+| Zapis danych | `src/storage.js` | localStorage z prefiksem |
+| Rozpoznawanie posiłków i ocena tygodnia | `api/analyze.js` | Claude API: zdjęcie, opis tekstowy, `review` tygodnia |
+| Dane z zegarka | `api/garmin.js` | most do intervals.icu: HRV, tętno spoczynkowe, sen, CTL/ATL, VO2max |
+| Ikony, manifest PWA | `public/` | instalacja na telefonie |
 
-## Krok po kroku
+Przepływ danych z zegarka: Garmin Connect → intervals.icu (oficjalne OAuth
+Garmina) → `/api/garmin` → aplikacja.
 
-### 1. Wrzuć kod na GitHub
+## Zmienne środowiskowe (Vercel → Settings → Environment Variables)
 
-- Wejdź na github.com → "New repository" → nazwij np. `dziennik-kalorii` →
-  Create
-- Na stronie repo kliknij "uploading an existing file" i przeciągnij
-  WSZYSTKIE pliki z tego folderu (zachowując strukturę: `src/`, `api/`,
-  `package.json`, `index.html`, `vite.config.js`)
-- Commit changes
+| Nazwa | Wymagane | Po co |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | tak | rozpoznawanie posiłków i ocena tygodnia |
+| `INTERVALS_API_KEY` | do danych z zegarka | intervals.icu → Settings → Developer |
+| `INTERVALS_ATHLETE_ID` | nie | np. `i123456`, domyślnie `0` = właściciel klucza |
+| `APP_TOKEN` | zalecane | blokuje obcych przed paleniem Twoich kredytów |
 
-### 2. Podłącz do Vercel
+Po ustawieniu `APP_TOKEN` wpisz ten sam ciąg raz w przeglądarce, w konsoli:
 
-- Wejdź na vercel.com → "Add New..." → "Project"
-- Wybierz repo `dziennik-kalorii` z listy → Import
-- Framework Preset: Vercel powinien sam rozpoznać "Vite" — zostaw jak jest
-- **Nie klikaj jeszcze Deploy** — najpierw krok 3
+```js
+localStorage.setItem("appToken", "TWÓJ_CIĄG")
+```
 
-### 3. Dodaj klucz API
+Bez tego `/api/analyze` i `/api/garmin` zwrócą 401.
 
-- W tym samym ekranie (przed deployem) rozwiń "Environment Variables"
-- Name: `ANTHROPIC_API_KEY`
-- Value: wklej swój klucz z console.anthropic.com
-- Add
+## Deploy
 
-### 4. Deploy
+1. Vercel → Add New → Project → zaimportuj to repo.
+2. Framework Preset: Vite (wykrywa się sam).
+3. Dodaj zmienne środowiskowe z tabeli powyżej.
+4. Deploy. Po ~1-2 min dostajesz link.
 
-- Kliknij "Deploy"
-- Poczekaj ~1-2 minuty
-- Dostaniesz link typu `dziennik-kalorii-xyz.vercel.app`
+Każdy push na `main` przebudowuje stronę automatycznie.
 
-### 5. Zainstaluj na telefonie jak appkę
+## Instalacja na telefonie
 
-- Otwórz link w Safari (iPhone) albo Chrome (Android)
-- Safari: przycisk Udostępnij → "Dodaj do ekranu głównego"
-- Chrome: menu (⋮) → "Dodaj do ekranu głównego"
+- iPhone (Safari): Udostępnij → „Dodaj do ekranu głównego".
+- Android (Chrome): menu ⋮ → „Dodaj do ekranu głównego".
 
-Gotowe — masz ikonkę jak zwykła appka, działa bez otwierania Claude.
+## Lokalnie
 
-## Ważne ograniczenia tej wersji
+```bash
+npm install
+npm run dev     # tylko frontend, /api nie działa
+npm run build
+```
 
-- **Dane są tylko w tej przeglądarce, na tym urządzeniu.** Wyczyszczenie
-  danych przeglądarki = utrata danych. Rób regularny eksport (przycisk
-  "Eksportuj" w apce) jako backup.
-- Jeśli zmienisz telefon, dane nie przejdą same — trzeba by dodać
-  prawdziwą bazę danych (Supabase) zamiast localStorage. Mogę to
-  dograć później, jeśli okaże się potrzebne.
+Żeby mieć działające `/api` lokalnie: `npx vercel dev` i `.env.local` ze
+zmiennymi z tabeli.
 
-## Aktualizacja w przyszłości
+## Ograniczenia, o których warto pamiętać
 
-Jeśli zechcesz coś zmienić w apce (a zapewne zechcesz), wróć do mnie w
-Claude z prośbą o zmianę, dostaniesz nowy `App.jsx` — podmieniasz plik
-w repo na GitHub (edytuj plik bezpośrednio na stronie GitHub albo
-wgraj nowy), Vercel przebuduje stronę automatycznie w ~1 minutę.
+- **Dane siedzą tylko w tej przeglądarce, na tym urządzeniu.** Wyczyszczenie
+  danych przeglądarki = utrata wszystkiego. Rób eksport z apki jako backup.
+- Zmiana telefonu nie przenosi danych. Przeniesienie wymagałoby prawdziwej
+  bazy (np. Supabase) zamiast localStorage.
+- Bundle ~600 kB — działa, ale przy dalszej rozbudowie wymaga code-splittingu.

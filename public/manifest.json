@@ -1,9 +1,24 @@
 {
-  "name": "Dziennik Kalorii",
-  "short_name": "Dziennik",
+  "name": "Tracker — dziennik i trening",
+  "short_name": "Tracker",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#14181A",
   "theme_color": "#14181A",
-  "orientation": "portrait"
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
 }
