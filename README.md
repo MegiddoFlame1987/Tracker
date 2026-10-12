@@ -14,6 +14,29 @@ do przeglądarki.
 | Dane z zegarka | `api/garmin.js` | most do intervals.icu: HRV, tętno spoczynkowe, sen, CTL/ATL, VO2max |
 | Ikony, manifest PWA | `public/` | instalacja na telefonie |
 
+## Zakładki
+
+| Zakładka | Co robi |
+|---|---|
+| Dzień | zasady programu na górze, podpowiedź trenera na dziś, liczby dnia, priorytety, trening, pomiary; jedzenie i materiały referencyjne zwinięte na dole |
+| Cele | priorytety dnia, jedna rzecz tygodnia + zadania, cele długie z terminem |
+| Tydzień / Miesiąc | podsumowania, wykresy, eksport do oceny przez AI |
+| Plan | periodyzacja 24 tygodni |
+
+## Progresja ciężarów (bez AI)
+
+`suggestLoads()` w `src/App.jsx` liczy propozycje lokalnie, z ostatnich sesji
+tego samego dnia tygodnia:
+
+- podwyżka **tylko** po dwóch sesjach na tym samym ciężarze z trafionym górnym
+  zakresem powtórzeń (+5 kg dół ciała, +2,5 kg reszta),
+- poniżej dolnego zakresu → −10%,
+- tydzień deload albo sen poniżej 6 h → blokada podwyżki,
+- progresuje ciężar, nie objętość: siłownia ma wspierać bieganie.
+
+Test AMRAP pokazuje się tylko w tygodniu deload (co 4.), poza nim jest zwinięty
+z datą ostatniego pomiaru.
+
 Przepływ danych z zegarka: Garmin Connect → intervals.icu (oficjalne OAuth
 Garmina) → `/api/garmin` → aplikacja.
 
