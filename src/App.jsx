@@ -399,6 +399,14 @@ function computeWeek(dateStr, startDateStr) {
   return Math.min(TOTAL_WEEKS, Math.floor(diffDays / 7) + 1);
 }
 
+// sen z zegarka ma pierwszenstwo tylko wtedy, gdy godziny nie sa wpisane recznie
+function sleepFor(bedtime, data) {
+  const manual = sleepHours(bedtime, data?.wakeTime);
+  if (manual != null) return manual;
+  const g = data?.garmin?.sleepHours;
+  return g != null ? g : null;
+}
+
 function sleepHours(sleepTime, wakeTime) {
   if (!sleepTime || !wakeTime) return null;
   const [sh, sm] = sleepTime.split(":").map(Number);
@@ -452,7 +460,7 @@ function buildDayExportLine(dateStr, data, settings, prevBedtime) {
   const t = mealTotals(data.meals);
   const burned = Number(data.burned) || 0;
   const net = burned - t.kcal;
-  const hrs = sleepHours(prevBedtime, data.wakeTime);
+  const hrs = sleepFor(prevBedtime, data);
 
   const progSummary = programSummaryForDate(dateStr, settings, data.program);
   const mealsStr = data.meals.length
@@ -559,7 +567,39 @@ const emptyDay = () => ({
   garmin: null, // migawka wellness z intervals.icu: hrv, sen, RHR, gotowość
   bodyComp: { fat: "", muscle: "", bone: "", water: "" },
   amrap: { dips: "", pushups: "" },
+  water: 0,              // ml wypite dzisiaj
+  oneThing: "",          // jedna rzecz, ktora ma sie dzis wydarzyc
+  notes: [],             // szybkie notatki, zeby mysl nie uciekla
+  evening: { done: "", missed: "", tomorrow: "" },
 });
+
+// Zasady: twoje wlasne zdania, nie moje. Rotuja po jednej na dzien.
+const SEED_PRINCIPLES = [
+  "Ufaj celowi.",
+  "Idz za glosem intuicji.",
+  "Strach o zmarnowana szanse jest wazniejszy niz strach przed bledem.",
+  "System ponad emocje. Ciaglosc ponad perfekcje.",
+  "Sen jest warunkiem, nie dodatkiem.",
+];
+
+async function loadPrinciples() {
+  try {
+    const r = await window.storage.get("settings:principles", false);
+    if (r) return JSON.parse(r.value);
+  } catch { /* brak */ }
+  return { items: SEED_PRINCIPLES.map((t, i) => ({ id: Date.now() + i, text: t })) };
+}
+async function savePrinciples(obj) {
+  try { await window.storage.set("settings:principles", JSON.stringify(obj), false); return true; }
+  catch { return false; }
+}
+// ta sama zasada przez caly dzien, inna nastepnego — bez losowania przy kazdym renderze
+function principleForDate(items, dateStr) {
+  if (!items || !items.length) return null;
+  const d = parseDate(dateStr);
+  const idx = Math.floor(d.getTime() / 86400000) % items.length;
+  return items[idx];
+}
 
 async function loadDay(date) {
   try {
@@ -1107,10 +1147,11 @@ function ProgramCard({ dayPlan, program, updateEx, toggleDone, prevSession, onCo
 function GarminPanel({ date, data, persist }) {
   const [state, setState] = useState("idle"); // idle | loading | ok | empty | error
   const [msg, setMsg] = useState("");
+  const [auto, setAuto] = useState(false);
 
   const g = data.garmin || null;
 
-  const importDay = async () => {
+  const importDay = async (silent = false) => {
     setState("loading"); setMsg("");
     try {
       // 3 dni zapasu: sync z zegarka bywa opóźniony, nocka przesuwa datę
@@ -1142,17 +1183,30 @@ function GarminPanel({ date, data, persist }) {
       persist(next);
       setState("ok");
       setMsg(act ? `${act.name || "trening"}${act.type ? ` (${act.type})` : ""}` : "sam wellness, bez treningu");
+      if (silent) setAuto(true);
     } catch (e) {
       setState("error");
       setMsg(String(e.message || e).slice(0, 180));
     }
   };
 
+  // Waga, sen i wellness same wchodzą przy wejściu w dzień. Raz na dzień, bez klikania.
+  // Tylko dziś i wczoraj: starsze dni ciągniesz ręcznie, żeby nie palić zapytań przy przewijaniu historii.
+  useEffect(() => {
+    const today = fmtDate(new Date());
+    const fresh = date === today || date === addDays(today, -1);
+    if (!fresh || data.garmin) return;
+    const key = `garmin-auto:${date}`;
+    try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, "1"); } catch { /* prywatne okno */ }
+    importDay(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
+
   return (
     <>
       <div className="flex items-center justify-between mb-2">
         <div className="text-xs uppercase tracking-widest" style={{ color: C.inkSoft }}>Bieg dziś</div>
-        <button onClick={importDay} disabled={state === "loading"}
+        <button onClick={() => importDay(false)} disabled={state === "loading"}
           className="text-xs px-2 py-1 flex items-center gap-1"
           style={{ color: C.teal, border: `1px solid ${C.line}`, borderRadius: R.soft, opacity: state === "loading" ? 0.5 : 1 }}>
           {state === "loading" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
@@ -1161,7 +1215,7 @@ function GarminPanel({ date, data, persist }) {
       </div>
       {state === "empty" && <div className="text-xs mb-2" style={{ color: C.inkSoft }}>Brak danych na ten dzień. Zegarek zsynchronizowany? intervals.icu ciągnie z Garmina w ~5 min.</div>}
       {state === "error" && <div className="text-xs mb-2" style={{ color: C.rust }}>{msg}</div>}
-      {state === "ok" && <div className="text-xs mb-2" style={{ color: C.teal }}>Pobrano: {msg}</div>}
+      {state === "ok" && <div className="text-xs mb-2" style={{ color: C.teal }}>{auto ? "Pobrano automatycznie: " : "Pobrano: "}{msg}</div>}
       {g && (
         <div className="text-xs mb-3 pb-2 grid grid-cols-4 gap-y-1 gap-x-2 font-mono" style={{ color: C.ink, borderBottom: `1px solid ${C.paperDim}` }}>
           <div><span style={{ color: C.inkSoft }}>HRV </span>{g.hrv ?? "—"}</div>
@@ -1178,7 +1232,8 @@ function GarminPanel({ date, data, persist }) {
   );
 }
 
-function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDietPhase, onSaved }) {
+function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDietPhase, onSaved, mode = "train" }) {
+  const isFood = mode === "food";
   const [busy, setBusy] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -1359,7 +1414,7 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
     loadDay(addDays(date, -1)).then((cd) => { if (!cancelled) setPrevBedtime(cd.sleepTime || ""); });
     return () => { cancelled = true; };
   }, [date]);
-  const hrs = sleepHours(prevBedtime, data.wakeTime);
+  const hrs = sleepFor(prevBedtime, data);
 
   // propozycje ciężarów i podpowiedź trenera na dziś — liczone lokalnie, bez API
   const suggest = suggestLoads(dayPlan, prevSessions, { isDeload, lowSleep: hrs != null && hrs < 6 });
@@ -1427,7 +1482,9 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
         ))}
       </Card>
 
-      {/* 3. priorytety dnia */}
+      {/* 3. zasada dnia, jedna rzecz, priorytety */}
+      <PrincipleCard date={date} />
+      {!isFood && <OneThing data={data} persist={persist} />}
       <TodayPriorities date={date} compact />
 
       {/* 4. liczby dnia */}
@@ -1475,6 +1532,7 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
 
       <ProgramSettingsRow settings={settings} onSetStart={onSetStart} onSetDietPhase={onSetDietPhase} weekNum={weekNum} phase={phase} />
 
+      {!isFood && (<>
       {/* 5. TRENING */}
       <SectionLabel icon={<Dumbbell size={12} />}>Trening</SectionLabel>
       <ProgramCard dayPlan={dayPlan} program={data.program} updateEx={updateProgEx} toggleDone={toggleProgDone} prevSession={prevSession} onComment={updateProgComment} suggest={suggest} />
@@ -1598,6 +1656,10 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
         )}
       </Collapsible>
 
+      </>)}
+
+      {isFood && (<>
+      <WaterCard data={data} persist={persist} dayKey={dayKey} />
       {/* 7. JEDZENIE — na dole, zwiniete */}
       <SectionLabel icon={<Utensils size={12} />}>Jedzenie</SectionLabel>
       <Collapsible
@@ -1725,6 +1787,9 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
         </div>
       </Collapsible>
 
+      </>)}
+
+      {!isFood && (<>
       <Collapsible
         storageKey="extra" icon={<Dumbbell size={15} />} title="Dodatkowe ćwiczenia"
         hint={data.exercises.length ? `${data.exercises.length} wpisów` : "spacer, mobilność, cokolwiek poza planem"}
@@ -1742,6 +1807,8 @@ function DayView({ date, setDate, data, setData, settings, onSetStart, onSetDiet
           <button onClick={addExercise} className="flex items-center gap-1 text-xs" style={{ color: C.inkSoft }}><Plus size={13} /> dodaj</button>
         </div>
       </Collapsible>
+
+      </>)}
 
       <ExportPanel label="📋 Eksportuj ten dzień" buildText={() => buildDayExportLine(date, data, settings, prevBedtime)} />
     </div>
@@ -1973,6 +2040,219 @@ function TodayPriorities({ date, compact = false }) {
   );
 }
 
+// ---------- zasada dnia: jedna, na wierzchu, rotowana ----------
+function PrincipleCard({ date, editable = false }) {
+  const [p, setP] = useState(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => { let off = false; loadPrinciples().then((x) => { if (!off) setP(x); }); return () => { off = true; }; }, []);
+  const write = (next) => { setP(next); savePrinciples(next); };
+  if (!p) return null;
+  const items = p.items || [];
+  const today = principleForDate(items, date);
+
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] uppercase tracking-[0.18em] mb-1" style={{ color: C.inkSoft, fontFamily: "ui-monospace, monospace" }}>
+            Zasada dnia
+          </div>
+          <div className="text-base font-serif leading-snug" style={{ color: C.ink }}>
+            {today ? today.text : "Dodaj swoje zasady niżej."}
+          </div>
+        </div>
+        {editable && (
+          <button onClick={() => setOpen(!open)} className="text-xs shrink-0 px-2 py-1"
+            style={{ color: C.inkSoft, border: `1px solid ${C.line}`, borderRadius: R.chip }}>
+            {open ? "gotowe" : "edytuj"}
+          </button>
+        )}
+      </div>
+
+      {editable && open && (
+        <div className="mt-3 pt-3 space-y-2" style={{ borderTop: `1px solid ${C.paperDim}` }}>
+          {items.map((it, i) => (
+            <div key={it.id} className="flex items-center gap-2">
+              <input
+                value={it.text}
+                onChange={(e) => write({ items: items.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
+                className="flex-1 min-w-0 bg-transparent outline-none text-sm" style={{ color: C.ink }}
+              />
+              <button onClick={() => write({ items: items.filter((_, j) => j !== i) })} style={{ color: C.rust }}><X size={14} /></button>
+            </div>
+          ))}
+          <button
+            onClick={() => write({ items: [...items, { id: Date.now(), text: "" }] })}
+            className="flex items-center gap-1 text-xs" style={{ color: C.inkSoft }}>
+            <Plus size={13} /> dodaj zasadę
+          </button>
+          <div className="text-xs pt-1" style={{ color: C.inkSoft }}>
+            Jedna na dzień, po kolei z listy. Im krócej, tym lepiej działa.
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---------- jedna rzecz dziś ----------
+function OneThing({ data, persist }) {
+  const v = data.oneThing || "";
+  return (
+    <Card tone={v ? "paper" : "paper"}>
+      <div className="text-[11px] uppercase tracking-[0.18em] mb-1" style={{ color: C.amber, fontFamily: "ui-monospace, monospace" }}>
+        Jedna rzecz dziś
+      </div>
+      <input
+        value={v}
+        onChange={(e) => persist({ ...data, oneThing: e.target.value })}
+        placeholder="ta jedna, która ma się wydarzyć"
+        className="w-full bg-transparent outline-none text-lg font-serif pb-1"
+        style={{ color: C.ink, borderBottom: `1px solid ${C.paperDim}` }}
+      />
+    </Card>
+  );
+}
+
+// ---------- szybka notatka: mysl nie ucieka, dzien sie nie rozbija ----------
+function QuickNotes({ data, persist }) {
+  const [draft, setDraft] = useState("");
+  const notes = data.notes || [];
+  const add = () => {
+    const t = draft.trim();
+    if (!t) return;
+    const now = new Date();
+    persist({ ...data, notes: [...notes, { id: Date.now(), t, at: `${pad(now.getHours())}:${pad(now.getMinutes())}` }] });
+    setDraft("");
+  };
+  return (
+    <Card>
+      <div className="text-[11px] uppercase tracking-[0.18em] mb-2" style={{ color: C.inkSoft, fontFamily: "ui-monospace, monospace" }}>
+        Szybka notatka
+      </div>
+      <div className="flex items-center gap-2 mb-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+          placeholder="wrzuć i wróć do tego, co robiłeś"
+          className="flex-1 min-w-0 bg-transparent outline-none text-sm pb-1"
+          style={{ color: C.ink, borderBottom: `1px solid ${C.paperDim}` }}
+        />
+        <button onClick={add} className="px-2 py-1 text-xs shrink-0" style={{ background: C.ink, color: C.paper, borderRadius: R.chip }}>
+          <Plus size={13} />
+        </button>
+      </div>
+      <div className="space-y-1">
+        {notes.map((n, i) => (
+          <div key={n.id} className="flex items-start gap-2 text-sm" style={{ color: C.ink }}>
+            <span className="font-mono text-xs shrink-0" style={{ color: C.inkSoft }}>{n.at}</span>
+            <span className="flex-1 min-w-0">{n.t}</span>
+            <button onClick={() => persist({ ...data, notes: notes.filter((_, j) => j !== i) })} style={{ color: C.rust }}><X size={13} /></button>
+          </div>
+        ))}
+        {!notes.length && <div className="text-xs" style={{ color: C.inkSoft }}>Pusto. Dobrze.</div>}
+      </div>
+    </Card>
+  );
+}
+
+// ---------- przeglad wieczorny: trzy pytania, dwie minuty ----------
+function EveningReview({ data, persist }) {
+  const e = data.evening || { done: "", missed: "", tomorrow: "" };
+  const set = (k, v) => persist({ ...data, evening: { ...e, [k]: v } });
+  const filled = [e.done, e.missed, e.tomorrow].filter(Boolean).length;
+  return (
+    <Collapsible
+      storageKey="evening" icon={<Moon size={15} />}
+      title="Przegląd wieczorny"
+      hint={filled ? `${filled}/3 wypełnione` : "trzy pytania, dwie minuty"}
+    >
+      {[
+        ["done", "Co zrobione", "nawet drobne"],
+        ["missed", "Co uciekło", "bez bicia się"],
+        ["tomorrow", "Jedna rzecz na jutro", "ta jedna"],
+      ].map(([k, label, ph]) => (
+        <div key={k} className="mb-3">
+          <div className="text-xs mb-1" style={{ color: C.inkSoft }}>{label}</div>
+          <textarea
+            value={e[k]} onChange={(ev) => set(k, ev.target.value)} rows={2} placeholder={ph}
+            className="w-full text-sm p-2 outline-none"
+            style={{ background: C.paperDim, color: C.ink, borderRadius: R.soft, border: "none", resize: "vertical" }}
+          />
+        </div>
+      ))}
+    </Collapsible>
+  );
+}
+
+// ---------- nawodnienie: prog rosnie w dni dlugiego biegu ----------
+function waterTarget(data, dayKey) {
+  const km = Number(data.run?.km) || 0;
+  // baza 3 L. Dlugi bieg: +500 ml na kazde 10 km, bo pot ~2,9 L / 3 h
+  const extra = km >= 10 ? Math.round((km / 10) * 500) : dayKey === "sat" ? 500 : 0;
+  return 3000 + extra;
+}
+
+function WaterCard({ data, persist, dayKey }) {
+  const ml = Number(data.water) || 0;
+  const target = waterTarget(data, dayKey);
+  const pct = Math.min(100, Math.round((ml / target) * 100));
+  const hour = new Date().getHours();
+  const behind = hour >= 15 && ml < target * 0.5;
+  const add = (n) => persist({ ...data, water: Math.max(0, ml + n) });
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[11px] uppercase tracking-[0.18em]" style={{ color: C.inkSoft, fontFamily: "ui-monospace, monospace" }}>
+          Nawodnienie
+        </div>
+        <div className="text-xs font-mono" style={{ color: pct >= 100 ? C.teal : behind ? C.rust : C.inkSoft }}>
+          {(ml / 1000).toFixed(1)} / {(target / 1000).toFixed(1)} L
+        </div>
+      </div>
+      <div className="h-2 w-full mb-2" style={{ background: C.paperDim, borderRadius: R.chip }}>
+        <div className="h-2" style={{ width: `${pct}%`, background: pct >= 100 ? C.teal : behind ? C.rust : C.amber, borderRadius: R.chip, transition: "width .3s" }} />
+      </div>
+      <div className="flex items-center gap-2">
+        {[250, 500, 750].map((n) => (
+          <button key={n} onClick={() => add(n)} className="px-3 py-1.5 text-xs font-mono"
+            style={{ background: C.paperDim, color: C.ink, borderRadius: R.chip }}>
+            +{n}
+          </button>
+        ))}
+        {ml > 0 && (
+          <button onClick={() => add(-250)} className="px-2 py-1.5 text-xs font-mono" style={{ color: C.inkSoft }}>−250</button>
+        )}
+      </div>
+      {behind && (
+        <div className="text-xs mt-2" style={{ color: C.rust }}>
+          Po 15:00 i poniżej połowy. Dociągnięcie wieczorem oznacza wstawanie w nocy.
+        </div>
+      )}
+      {target > 3000 && (
+        <div className="text-xs mt-2" style={{ color: C.inkSoft }}>
+          Cel podniesiony o {(target - 3000) / 1000} L z powodu dzisiejszego biegu. Elektrolity, nie sama woda.
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// notatki i przeglad wieczorny potrzebuja danych dnia, a widok CELE ich nie dostaje
+function GoalsDayExtras({ date }) {
+  const [data, setData] = useState(null);
+  useEffect(() => { let off = false; loadDay(date).then((d) => { if (!off) setData(d); }); return () => { off = true; }; }, [date]);
+  if (!data) return null;
+  const persist = (next) => { setData(next); saveDay(date, next); };
+  return (
+    <>
+      <QuickNotes data={data} persist={persist} />
+      <EveningReview data={data} persist={persist} />
+    </>
+  );
+}
+
 // ---------- widok CELE ----------
 function GoalsView({ date }) {
   const monday = getMonday(date);
@@ -2001,7 +2281,11 @@ function GoalsView({ date }) {
         <div className="text-lg font-serif" style={{ color: C.paper }}>Co ma się wydarzyć</div>
       </div>
 
+      <PrincipleCard date={date} editable />
+
       <TodayPriorities date={date} />
+
+      <GoalsDayExtras date={date} />
 
       <SectionLabel icon={<ListChecks size={12} />}>Tydzień {shortLabel(monday)} — {shortLabel(addDays(monday, 6))}</SectionLabel>
       <Card>
@@ -2115,7 +2399,7 @@ function WeekView({ date, settings }) {
     const protein = data.meals.reduce((s, m) => s + (Number(m.protein) || 0), 0);
     const burned = Number(data.burned) || 0;
     const net = burned - consumed;
-    const hrs = sleepHours(bedtime, data.wakeTime);
+    const hrs = sleepFor(bedtime, data);
     const dKey = DAY_KEY_BY_DOW[parseDate(d).getDay()];
     const runKm = Number(data.run?.km) || 0;
     const runTime = Number(data.run?.timeMin) || 0;
@@ -2477,7 +2761,7 @@ function MonthView({ monthStr, setMonthStr, settings }) {
   const totalNetMonth = nets.reduce((a, b) => a + b, 0);
   const predictedKg = Math.round((totalNetMonth / 7700) * 100) / 100;
 
-  const sleepVals = days.map((d) => sleepHours(d.bedtime, d.data.wakeTime)).filter((h) => h != null);
+  const sleepVals = days.map((d) => sleepFor(d.bedtime, d.data)).filter((h) => h != null);
   const avgSleep = sleepVals.length ? Math.round((sleepVals.reduce((a, b) => a + b, 0) / sleepVals.length) * 10) / 10 : null;
 
   const weightEntries = days.filter((d) => d.data.weight).map((d) => ({ date: d.date, w: Number(d.data.weight) }));
@@ -2643,6 +2927,7 @@ export default function CalorieLogbook() {
 
   const NAV = [
     { id: "day", label: "Dzień", icon: CalendarDays },
+    { id: "food", label: "Jedzenie", icon: Utensils },
     { id: "goals", label: "Cele", icon: Target },
     { id: "week", label: "Tydzień", icon: BarChart3 },
     { id: "month", label: "Miesiąc", icon: Calendar },
@@ -2657,7 +2942,11 @@ export default function CalorieLogbook() {
           <DayView date={date} setDate={setDate} data={data} setData={setData} settings={settings} onSetStart={onSetStart} onSetDietPhase={onSetDietPhase}
             onSaved={() => setRefreshKey((k) => k + 1)} />
         )}
-        {view === "day" && loading && <div style={{ color: C.mute }} className="text-sm text-center py-10">Wczytywanie…</div>}
+        {view === "food" && !loading && (
+          <DayView mode="food" date={date} setDate={setDate} data={data} setData={setData} settings={settings} onSetStart={onSetStart} onSetDietPhase={onSetDietPhase}
+            onSaved={() => setRefreshKey((k) => k + 1)} />
+        )}
+        {(view === "day" || view === "food") && loading && <div style={{ color: C.mute }} className="text-sm text-center py-10">Wczytywanie…</div>}
         {view === "goals" && <GoalsView date={date} />}
         {view === "week" && <WeekView date={date} settings={settings} key={refreshKey} />}
         {view === "plan" && <PlanView date={date} settings={settings} />}
