@@ -33,6 +33,30 @@ async function list(prefix = "") {
   return { keys, prefix, shared: false };
 }
 
+// Pełna kopia: wszystkie klucze dziennik:* w jednym obiekcie JSON.
+export function exportAll() {
+  const data = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(PREFIX)) data[k.slice(PREFIX.length)] = localStorage.getItem(k);
+  }
+  return { app: "tracker", format: 1, exportedAt: new Date().toISOString(), count: Object.keys(data).length, data };
+}
+
+// Wczytuje kopię z exportAll. Zwraca liczbę wpisanych kluczy; rzuca przy złym pliku.
+export function importAll(backup) {
+  if (!backup || backup.app !== "tracker" || backup.format !== 1 || typeof backup.data !== "object") {
+    throw new Error("To nie jest kopia Trackera");
+  }
+  let n = 0;
+  for (const [k, v] of Object.entries(backup.data)) {
+    if (typeof v !== "string") continue;
+    localStorage.setItem(PREFIX + k, v);
+    n += 1;
+  }
+  return n;
+}
+
 // Instaluje window.storage tak, żeby reszta kodu (App.jsx) nie wymagała zmian.
 export function installStorageShim() {
   if (typeof window !== "undefined" && !window.storage) {
