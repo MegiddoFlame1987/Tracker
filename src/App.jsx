@@ -6,7 +6,7 @@ import {
   Camera, Moon, Flame, Dumbbell, ChevronLeft, ChevronRight, ChevronDown, X, Loader2, Check,
   Pencil, Scale, Target, ListChecks, CalendarDays, Calendar, BarChart3, Map, Plus, Utensils, Zap, Heart,
 } from "lucide-react";
-import { installStorageShim } from "./storage.js";
+import { installStorageShim, exportAll, importAll } from "./storage.js";
 
 installStorageShim();
 
@@ -770,6 +770,71 @@ function ExportPanel({ label, buildText }) {
         style={{ background: C.bg, color: C.paper, borderRadius: R.soft, border: `1px solid ${C.line}`, resize: "vertical" }}
       />
     </div>
+  );
+}
+
+// ---------- Pełna kopia danych: plik JSON do pobrania i wczytania ----------
+function BackupPanel() {
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState(false);
+  const say = (text, bad = false) => { setMsg(text); setErr(bad); };
+
+  const download = () => {
+    try {
+      const backup = exportAll();
+      const blob = new Blob([JSON.stringify(backup, null, 1)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tracker-kopia-${fmtDate(new Date())}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      say(`Zapisano ${backup.count} wpisów do pliku.`);
+    } catch (e) {
+      say(`Nie udało się zapisać: ${e.message}`, true);
+    }
+  };
+
+  const restore = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      const when = backup.exportedAt ? new Date(backup.exportedAt).toLocaleString("pl-PL") : "?";
+      if (!window.confirm(`Wczytać kopię z ${when} (${backup.count ?? "?"} wpisów)? Wpisy o tych samych kluczach zostaną nadpisane.`)) return;
+      const n = importAll(backup);
+      say(`Wczytano ${n} wpisów. Odświeżam…`);
+      setTimeout(() => window.location.reload(), 800);
+    } catch (ex) {
+      say(`Nie wczytano: ${ex.message}`, true);
+    }
+  };
+
+  return (
+    <Card tone="paper" className="mt-6">
+      <div className="text-[11px] uppercase tracking-[0.2em] mb-2" style={{ color: C.inkSoft, fontFamily: "ui-monospace, monospace" }}>
+        Kopia danych
+      </div>
+      <div className="text-xs mb-3" style={{ color: C.inkSoft }}>
+        Wszystko (dziennik, plan, oceny) jest tylko w tej przeglądarce. Pobierz plik przed zmianą telefonu
+        albo czyszczeniem danych. Wczytanie nadpisuje wpisy o tych samych datach.
+      </div>
+      <div className="flex gap-2">
+        <button onClick={download} className="flex-1 px-3 py-2 text-xs"
+          style={{ background: C.amber, color: C.ink, borderRadius: R.soft }}>
+          Pobierz pełną kopię
+        </button>
+        <label className="flex-1 px-3 py-2 text-xs text-center cursor-pointer"
+          style={{ border: `1px solid ${C.line}`, color: C.ink, borderRadius: R.soft }}>
+          Wczytaj kopię
+          <input type="file" accept="application/json,.json" onChange={restore} className="hidden" />
+        </label>
+      </div>
+      {msg && <div className="text-xs mt-2 font-mono" style={{ color: err ? C.rust : C.teal }}>{msg}</div>}
+    </Card>
   );
 }
 
@@ -2950,6 +3015,7 @@ export default function CalorieLogbook() {
         {view === "goals" && <GoalsView date={date} />}
         {view === "week" && <WeekView date={date} settings={settings} key={refreshKey} />}
         {view === "plan" && <PlanView date={date} settings={settings} />}
+        {view === "plan" && <BackupPanel />}
         {view === "month" && <MonthView monthStr={monthStr} setMonthStr={setMonthStr} settings={settings} key={"m" + refreshKey} />}
 
         <div className="text-center mt-8 text-[11px]" style={{ color: "#4A4F50", fontFamily: "ui-monospace, monospace" }}>
